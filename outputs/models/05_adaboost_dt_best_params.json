@@ -1,0 +1,11 @@
+{
+  "best_params": {
+    "estimator__max_depth": 5,
+    "n_estimators": 200
+  },
+  "best_cv_roc_auc": 0.8813579478937514,
+  "fixed_params": {
+    "learning_rate": 0.6,
+    "algorithm": "SAMME (only option in sklearn>=1.6)"
+  }
+}

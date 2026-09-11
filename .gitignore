@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+*.bak
+
+# Superseded raw snapshot, duplicate of dataset/usgs_earthquake_catalog.csv
+# (documented as unused by the pipeline in README.md).
+dataset/archive/
+
+# Raw ydata-profiling JSON dump (~106MB) exceeds GitHub's 100MB file limit.
+# The human-readable HTML report (outputs/profiling/usgs_earthquake_profile.html)
+# is committed instead. Regenerate the JSON locally if needed:
+#   python scripts/02_generate_profile_report.py   (Python <3.14 env, see README)
+outputs/profiling/usgs_earthquake_profile.json

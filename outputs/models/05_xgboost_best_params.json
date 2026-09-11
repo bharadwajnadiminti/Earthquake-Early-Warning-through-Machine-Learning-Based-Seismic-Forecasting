@@ -1,0 +1,19 @@
+{
+  "best_params": {
+    "n_estimators": 2000,
+    "max_depth": 4,
+    "learning_rate": 0.1
+  },
+  "best_iteration": 55,
+  "fixed_params": {
+    "objective": "binary:logistic",
+    "booster": "gbtree",
+    "eval_metric": "auc",
+    "tree_method": "hist",
+    "early_stopping_rounds": 50,
+    "random_state": 42,
+    "scale_pos_weight": 16.432005917889285,
+    "n_jobs": -1
+  },
+  "scale_pos_weight": 16.432005917889285
+}

@@ -1,0 +1,22 @@
+# Earthquake forecasting pipeline — pinned to what this project was built
+# and tested against (Python 3.14.6, Windows).
+#
+# Note: ydata-profiling (used only by scripts/02_generate_profile_report.py)
+# does not yet publish a build for Python >=3.14 as of this writing. Stage 02
+# has already been run (see outputs/profiling/) and does not need to be
+# re-run for the rest of the pipeline (03-07) to work. If you need to
+# re-run stage 02, do it in a separate Python 3.10-3.13 environment with
+# `pip install ydata-profiling==4.18.4`.
+
+pandas==3.0.5
+numpy==2.5.2
+scikit-learn==1.9.1
+xgboost==3.4.1
+matplotlib==3.11.1
+seaborn==0.13.2
+requests==2.34.2
+joblib==1.6.0
+tabulate==0.10.0
+
+# Stage 02 only (separate environment, Python <3.14 — see note above):
+# ydata-profiling==4.18.4

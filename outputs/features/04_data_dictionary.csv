@@ -1,0 +1,30 @@
+column,dtype,pct_missing,description
+day,"datetime64[us, UTC]",0.0,Forecast origin date (UTC midnight). Features use data through end of this day; target looks forward.
+cell_lat,float64,0.0,Latitude of the 1.0 deg grid cell centroid.
+cell_lon,float64,0.0,Longitude of the 1.0 deg grid cell centroid.
+mc_cell,float64,0.0,"Per-cell magnitude of completeness (MAXC + 0.2 correction), static, computed from full cell history."
+historical_event_count,float64,0.0,Cumulative count of catalog events in this cell from the start of the catalog through day t (cell 'maturity').
+days_since_last_event,float64,0.0,"Days since the most recent event in this cell, as of day t (inter-event-time proxy)."
+rolling_count_7d,float64,0.0,Count of events in this cell in the trailing 7-day window ending on day t (inclusive) - seismicity rate.
+rolling_mean_mag_7d,float64,31.354,Mean magnitude of events in this cell in the trailing 7-day window. NaN if no events in the window.
+rolling_max_mag_7d,float64,31.354,Max magnitude of events in this cell in the trailing 7-day window. NaN if no events in the window.
+log_energy_7d,float64,0.0,"log10(1 + sum of radiated seismic energy [Joules, via 10^(1.5*mag+4.8)] over the trailing 7-day window)."
+rolling_count_30d,float64,0.0,Count of events in this cell in the trailing 30-day window ending on day t (inclusive) - seismicity rate.
+rolling_mean_mag_30d,float64,7.974,Mean magnitude of events in this cell in the trailing 30-day window. NaN if no events in the window.
+rolling_max_mag_30d,float64,7.974,Max magnitude of events in this cell in the trailing 30-day window. NaN if no events in the window.
+log_energy_30d,float64,0.0,"log10(1 + sum of radiated seismic energy [Joules, via 10^(1.5*mag+4.8)] over the trailing 30-day window)."
+rolling_count_90d,float64,0.0,Count of events in this cell in the trailing 90-day window ending on day t (inclusive) - seismicity rate.
+rolling_mean_mag_90d,float64,1.712,Mean magnitude of events in this cell in the trailing 90-day window. NaN if no events in the window.
+rolling_max_mag_90d,float64,1.712,Max magnitude of events in this cell in the trailing 90-day window. NaN if no events in the window.
+log_energy_90d,float64,0.0,"log10(1 + sum of radiated seismic energy [Joules, via 10^(1.5*mag+4.8)] over the trailing 90-day window)."
+rolling_count_365d,float64,0.0,Count of events in this cell in the trailing 365-day window ending on day t (inclusive) - seismicity rate.
+rolling_mean_mag_365d,float64,0.021,Mean magnitude of events in this cell in the trailing 365-day window. NaN if no events in the window.
+rolling_max_mag_365d,float64,0.021,Max magnitude of events in this cell in the trailing 365-day window. NaN if no events in the window.
+log_energy_365d,float64,0.0,"log10(1 + sum of radiated seismic energy [Joules, via 10^(1.5*mag+4.8)] over the trailing 365-day window)."
+b_value_90d,float64,54.46,"Gutenberg-Richter b-value (Aki/Utsu MLE) over the trailing 90-day window, using events >= mc_cell. NaN if fewer than 10 qualifying events in the window (unreliable estimate)."
+b_value_90d_n_events,float64,0.0,Number of events >= mc_cell used in the 90-day b-value estimate (reliability indicator for b_value_90d).
+b_value_365d,float64,26.186,"Gutenberg-Richter b-value (Aki/Utsu MLE) over the trailing 365-day window, using events >= mc_cell. NaN if fewer than 10 qualifying events in the window (unreliable estimate)."
+b_value_365d_n_events,float64,0.0,Number of events >= mc_cell used in the 365-day b-value estimate (reliability indicator for b_value_365d).
+doy_sin,float64,0.0,sin(2*pi*day_of_year/365.25) - cyclical seasonal encoding.
+doy_cos,float64,0.0,cos(2*pi*day_of_year/365.25) - cyclical seasonal encoding.
+target,int64,0.0,"1 if >=1 event with magnitude >= 4.5 occurs in this cell during (day t, day t+7]; else 0."

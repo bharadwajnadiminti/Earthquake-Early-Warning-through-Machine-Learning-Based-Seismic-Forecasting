@@ -1,0 +1,12 @@
+{
+  "best_params": {
+    "estimator__max_features": "log2",
+    "n_estimators": 200
+  },
+  "best_cv_roc_auc": 0.8875688038326534,
+  "fixed_params": {
+    "inner_rf_n_estimators": 15,
+    "inner_rf_max_depth": 4,
+    "reason": "see module docstring: compute-budget choice"
+  }
+}
