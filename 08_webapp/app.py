@@ -25,16 +25,13 @@ you're looking at the model's actual view of cumulative risk through
 that date, computed from that snapshot's real rolling features, not a
 fabricated per-day split.
 
-No external API key required (Leaflet + OpenStreetMap tiles + leaflet.heat,
-not the Google Maps JS API the original had a key hardcoded for). This
-isn't just a style choice: tested the reference app's exact original code
-(same key, same `google.maps.visualization.HeatmapLayer` call) and Google
-has discontinued that feature entirely -
-`Error: The Heatmap Layer functionality in the Maps JavaScript API is no
-longer available in the Maps JavaScript API as of version 3.65.` - a
-console exception on Google's own SDK, unrelated to the key's validity or
-this project. The original code cannot render a heatmap with ANY key
-anymore. Leaflet + leaflet.heat is the closest still-working equivalent.
+No external API key required (Leaflet + Esri tiles, not the Google Maps JS
+API the original had a key hardcoded for - tested that exact original code,
+Google has discontinued `google.maps.visualization.HeatmapLayer` entirely
+as of Maps JS API v3.65, unrelated to the key's validity or this project).
+Points, not a blended heatmap: one circle marker per active cell, colored/
+sized continuously by that cell's own predicted probability, so real day-
+to-day changes are visible even when they don't cross an old bucket edge.
 
 Run locally:
     cd 08_webapp

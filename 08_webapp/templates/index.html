@@ -5,12 +5,13 @@
     <meta charset="UTF-8">
     <title>Predicting Earthquakes</title>
 
-    <!-- Leaflet + leaflet.heat: free, no API key (the original used the Google
-         Maps JS API with a key hardcoded in this file - removed, see app.py
-         docstring for why). Same heatmap-with-slider interaction. -->
+    <!-- Leaflet: free, no API key (the original used the Google Maps JS API
+         with a key hardcoded in this file - removed, see app.py docstring
+         for why). Individual per-cell points instead of a blended heatmap
+         - each dot is one active grid cell's own predicted probability,
+         not a smoothed/interpolated surface. -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 
     <style>
       /* Always set the map height explicitly to define the size of the div
@@ -41,27 +42,129 @@
     <script>
 
       var earthquakeHorizon = {{ earthquake_horizon | tojson }};
-      var map, heatmap;
+      var map, pointsLayer;
+
+      // Continuous color + size scale by predicted probability, not
+      // discrete buckets. Day-to-day, most active cells' probabilities
+      // move by a few hundredths (e.g. 0.82 -> 0.73), which is a real,
+      // model-driven change - but 4 discrete color buckets swallowed
+      // moves that didn't cross a bucket edge, making the map look
+      // static across the slider even though the numbers underneath
+      // were genuinely updating. Interpolating continuously (green ->
+      // yellow -> orange -> red, ColorBrewer RdYlGn-reversed stops) and
+      // also scaling marker radius with probability means every real
+      // change is visible, not just ones that cross a threshold.
+      var PROB_MIN = 0.3;   // the display cutoff - anything below isn't shown at all
+      var COLOR_STOPS = [
+        [145, 207, 96],   // low end of shown range
+        [254, 224, 139],
+        [252, 141, 89],
+        [215, 48, 39],    // p = 1.0
+      ];
+      function colorForProb(p) {
+        var t = Math.max(0, Math.min(1, (p - PROB_MIN) / (1 - PROB_MIN)));
+        var seg = t * (COLOR_STOPS.length - 1);
+        var i = Math.min(COLOR_STOPS.length - 2, Math.floor(seg));
+        var f = seg - i;
+        var a = COLOR_STOPS[i], b = COLOR_STOPS[i + 1];
+        var rgb = [0, 1, 2].map(function (c) { return Math.round(a[c] + (b[c] - a[c]) * f); });
+        return 'rgb(' + rgb.join(',') + ')';
+      }
+      function radiusForProb(p) {
+        var t = Math.max(0, Math.min(1, (p - PROB_MIN) / (1 - PROB_MIN)));
+        return 5 + 9 * t; // 5px at the cutoff, 14px at p=1.0
+      }
+
+      // The slider does a full form POST -> full page reload (this is a
+      // plain server-rendered Flask app, not a single-page app), so
+      // initMap() runs from scratch on every slider move. Without this,
+      // that meant losing which base layer (Map/Satellite) and which
+      // part of the world you were looking at every single time. Persist
+      // both across reloads in localStorage (per-browser only - not a
+      // server-side setting - and wrapped in try/catch since private
+      // browsing can block storage access).
+      var VIEW_KEY = 'eq_forecaster_view';
+      function saveView(patch) {
+        try {
+          var cur = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}');
+          localStorage.setItem(VIEW_KEY, JSON.stringify(Object.assign(cur, patch)));
+        } catch (e) { /* private browsing / storage disabled - just skip persistence */ }
+      }
+      function loadView() {
+        try {
+          return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}');
+        } catch (e) { return {}; }
+      }
 
       function initMap() {
-        map = L.map('map').setView([0, 0], 2);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap contributors',
-          maxZoom: 10,
-        }).addTo(map);
+        var saved = loadView();
 
-        heatmap = L.heatLayer(getPoints(), { radius: 30, blur: 25, maxZoom: 6 }).addTo(map);
+        // maxBounds + noWrap on every tile layer stop Leaflet's default
+        // infinite horizontal wrap - without them, zooming out past
+        // "the whole world fits once" repeats the map side-by-side
+        // indefinitely as you pan/zoom out.
+        var worldBounds = L.latLngBounds([-90, -180], [90, 180]);
+        map = L.map('map', {
+          minZoom: 2,
+          maxBounds: worldBounds,
+          maxBoundsViscosity: 1.0,
+        }).setView(saved.center || [0, 0], saved.zoom || 2);
+
+        // "Map": Esri World Street Map - labeled countries/places + cream
+        // landmass / light-blue ocean, the closest free (no API key) look-
+        // alike to the reference app's Google roadmap style. (CartoDB's
+        // free basemaps now require a key too - tried, watermarked "API KEY
+        // REQUIRED" - Esri's public basemap tiles don't.)
+        var roadmap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri',
+          maxZoom: 19,
+          noWrap: true,
+          bounds: worldBounds,
+        });
+
+        // "Satellite": Esri World Imagery - free, no key, matches the
+        // reference app's Map/Satellite toggle.
+        var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri',
+          maxZoom: 19,
+          noWrap: true,
+          bounds: worldBounds,
+        });
+
+        // Restore whichever base layer was active before the last slider
+        // move (defaults to "Map" the very first time).
+        (saved.baseLayer === 'Satellite' ? satellite : roadmap).addTo(map);
+
+        var baseLayers = { 'Map': roadmap, 'Satellite': satellite };
+        L.control.layers(baseLayers, null, { position: 'topleft' }).addTo(map);
+
+        map.on('baselayerchange', function (e) { saveView({ baseLayer: e.name }); });
+        map.on('moveend', function () {
+          saveView({ center: map.getCenter(), zoom: map.getZoom() });
+        });
+
+        // One circle marker per active grid cell's own forecast - not a
+        // blended/interpolated heatmap surface, so what you see is exactly
+        // what the model predicted for that cell, nothing smoothed in
+        // between.
+        pointsLayer = L.layerGroup();
+        getPoints().forEach(function (pt) {
+          var lat = pt[0], lon = pt[1], p = pt[2];
+          L.circleMarker([lat, lon], {
+            radius: radiusForProb(p),
+            weight: 1,
+            color: '#222',
+            fillColor: colorForProb(p),
+            fillOpacity: 0.85,
+          })
+            .bindPopup('P(M4.5+ in next 7 days) = ' + p.toFixed(2))
+            .bindTooltip(p.toFixed(2), { permanent: false, direction: 'top' })
+            .addTo(pointsLayer);
+        });
+        pointsLayer.addTo(map);
       }
 
-      function toggleHeatmap() {
-        if (map.hasLayer(heatmap)) {
-          map.removeLayer(heatmap);
-        } else {
-          heatmap.addTo(map);
-        }
-      }
-
-      // Heatmap data: [lat, lon, weight] triples, weight = predicted probability
+      // Point data: [lat, lon, weight] triples, weight = predicted probability
       function getPoints() {
         return earthquakeHorizon;
       }
