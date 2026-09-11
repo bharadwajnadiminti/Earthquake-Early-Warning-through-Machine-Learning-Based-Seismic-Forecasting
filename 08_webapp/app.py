@@ -26,7 +26,15 @@ that date, computed from that snapshot's real rolling features, not a
 fabricated per-day split.
 
 No external API key required (Leaflet + OpenStreetMap tiles + leaflet.heat,
-not the Google Maps JS API the original had a key hardcoded for).
+not the Google Maps JS API the original had a key hardcoded for). This
+isn't just a style choice: tested the reference app's exact original code
+(same key, same `google.maps.visualization.HeatmapLayer` call) and Google
+has discontinued that feature entirely -
+`Error: The Heatmap Layer functionality in the Maps JavaScript API is no
+longer available in the Maps JavaScript API as of version 3.65.` - a
+console exception on Google's own SDK, unrelated to the key's validity or
+this project. The original code cannot render a heatmap with ANY key
+anymore. Leaflet + leaflet.heat is the closest still-working equivalent.
 
 Run locally:
     cd 08_webapp
