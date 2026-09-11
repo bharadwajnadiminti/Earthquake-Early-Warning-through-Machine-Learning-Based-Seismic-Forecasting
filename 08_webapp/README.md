@@ -1,12 +1,24 @@
 # Stage 08 — Forecast dashboard (web app)
 
-Implements the last two steps of the project pipeline —
-**forecast output -> early warning alert** — as an interactive local web
-app, using the models trained and evaluated in stages 05/06. Modeled after
-`temp/EarthquakeForecasting/Webapp` (a single-model heatmap-and-slider demo
-that retrains from scratch on every restart and hardcodes a Google Maps API
-key in the page source), but built on this project's own verified pipeline
-and with several things that reference app doesn't have.
+Implements the proposal's last two pipeline steps — **forecast output ->
+early warning alert** — as a local interactive dashboard, combining:
+
+- **UI/interaction**: ported from `temp/EarthquakeForecasting/Webapp/`
+  as-is (title bar, single world map, one "select future date" slider) -
+  see `templates/index.html`. The only change is swapping the original's
+  Google Maps JS API (which had a real-looking key hardcoded in the page
+  source) for Leaflet + leaflet.heat over free OpenStreetMap tiles - no
+  API key needed, and nothing gets committed to a public repo that
+  shouldn't be.
+- **Data pulling and model building**: this project's own verified
+  pipeline, NOT the reference app's from-scratch-every-restart approach.
+  `inference.py` reuses `scripts/04_feature_engineering.py`'s own feature
+  code (imported by file path) to compute each active cell's real rolling
+  features, and loads the actual `GridSearchCV`-tuned XGBoost model saved
+  by stage 05 (`outputs/05_models/05_model_xgboost.pkl` - the best model
+  per stage 06's evaluation), instead of retraining a fresh, untuned,
+  unevaluated model blind on every restart against only the last rolling
+  month of all-magnitude USGS data.
 
 ## Run locally
 
@@ -16,80 +28,44 @@ py -3.14 -m pip install -r requirements.txt -r ../requirements.txt
 py -3.14 app.py
 ```
 
-Then open **http://127.0.0.1:5000** in a browser. First load takes ~15-20s
-(computing today's feature row for all 372 active cells reuses stage 04's
-own rolling-window code over the full catalog history — see "How it
-works" below); the result is cached in memory for the life of the process.
+Then open **http://127.0.0.1:5000**. First load takes ~15-20s (computing
+the last 8 days of features for all 372 active cells, reusing stage 04's
+rolling-window code); cached in memory afterward.
 
-No API key or external account needed — the map uses
-[Leaflet](https://leafletjs.com/) with free OpenStreetMap tiles.
+## The slider
 
-## Features
+The reference app's slider ("Select future date: today + N", N in 0-7)
+implied the underlying model could break its forecast down day-by-day.
+Ours can't — it predicts one probability per (cell, day) for "does an
+M&ge;4.5 event happen in the *following* 7 days", not a day-by-day split.
+Rather than fake that, the slider here is wired to real forecast
+**snapshots** from the last 8 days, chosen so the slider's own label lines
+up exactly with the *end* of the 7-day window being shown: move it to N
+and you're looking at the model's actual view (real rolling features,
+real prediction) of cumulative risk through today+N. See `app.py`'s
+docstring for the exact offset math.
 
-- **Interactive risk map.** One marker per active (>=50-event) grid cell,
-  sized/colored by the selected model's predicted P(M>=4.5 in the next 7
-  days). Click a marker for the full feature breakdown behind that
-  prediction (rolling event counts, b-value, days since last event,
-  magnitude of completeness) and a side-by-side probability comparison
-  across all three trained models.
-- **Model switcher.** Toggle between AdaBoost+Decision Tree,
-  AdaBoost+Random Forest, and XGBoost (the best model, preselected) without
-  a page reload — all three models' predictions are computed once and sent
-  to the browser together.
-- **Early-warning alert banner.** Lists every cell at or above an
-  adjustable probability threshold (slider, default 0.5); updates live as
-  you move the slider or switch models.
-- **Top-risk table.** The 15 highest-probability cells, ranked, with
-  supporting stats.
-- **Model comparison panel.** Test-set ROC-AUC/PR-AUC/F1/Brier for all
-  three models (from stage 06's `06_evaluation_metrics.json`), best model
-  highlighted, with the same justification text stage 07 writes into the
-  final report.
-- **Recent-earthquakes overlay.** Actual M4.5+ events from the last 30 days
-  (from the stage 03 cleaned catalog) plotted as separate markers, toggle-
-  able, so predicted risk can be eyeballed against recent ground truth.
-- **Manual refresh.** The "Refresh" button recomputes today's features from
-  whatever is currently in `outputs/03_processed/03_cleaned_catalog.csv` —
-  re-run stages 01 (fetch new USGS data) and 03 (re-clean) first, then hit
-  Refresh, to see a forecast that reflects newly-fetched data without
-  restarting the server.
+One behavioral difference from the original: at slider position 0 the
+reference app showed a blank map (its own lookup table happened to have
+no row for exactly "today" at that position). Here position 0 shows a
+real forecast snapshot (today-7's), so the map is never blank.
 
-## How it works (and why it's not just re-running stage 04)
+## Files
 
-Stage 04's own committed feature matrix (`outputs/04_features/`)
-deliberately **drops the most recent days per cell** — their target label
-(did an M4.5+ event happen in the following 7 days?) isn't knowable yet, so
-those rows are useless for *training*. But that's exactly the row a live
-dashboard needs: "today's" features, with an unknown future.
-
-`inference.py` does not reimplement feature engineering — it imports
-`scripts/04_feature_engineering.py` **by file path** (its name starts with
-a digit, so it can't be a normal Python import) and calls the same
-`compute_cell_features()` / `maxc_completeness_magnitude()` functions and
-constants stage 04 uses, then keeps only the last (most recent) row per
-cell instead of dropping it. This guarantees the dashboard can never
-compute a feature differently than the models were actually trained on —
-single source of truth, not a parallel reimplementation that could drift.
-
-Prediction preprocessing (missing-indicator columns + median imputation,
-fit on the train split back in stage 05, column ordering from
-`05_feature_columns.json`) is likewise copied verbatim from stage 06's
-evaluation code.
-
-## Endpoints
-
-- `GET /` — the dashboard page.
-- `GET /api/forecast` — JSON: every active cell's lat/lon, display
-  features, and per-model probability. `?refresh=1` forces recomputation.
-- `GET /api/recent-quakes?days=30&min_mag=4.5` — recent actual events for
-  the ground-truth overlay.
-- `GET /api/metrics` — the stage 06 model comparison table + best-model
-  justification.
+- `app.py` — Flask routes; maps the slider to a forecast snapshot and
+  renders the heatmap points.
+- `inference.py` — loads the stage 05 model/imputer/feature-columns and
+  computes live features per active cell for the last 8 days (see its own
+  docstring for why the committed `outputs/04_features/` matrix alone
+  isn't enough — it deliberately drops the very rows a live dashboard
+  needs).
+- `templates/index.html` — the page, ported from the reference app with
+  Leaflet swapped in for Google Maps.
 
 ## Known limitations
 
 Same catalog-window and coarse-grid caveats as the rest of the project
-(see the top-level README's "Known limitations") — this dashboard
-visualizes the same model, it doesn't change what it can or can't see.
-The "Refresh" button re-derives features from whatever's on disk; it does
-not itself call the USGS API (run stage 01 first for genuinely new data).
+(top-level README's "Known limitations") — this dashboard visualizes the
+same model, it doesn't change what it can or can't see. Only the best
+model (XGBoost) is shown, matching the reference app's single-heatmap UI
+(no model switcher).

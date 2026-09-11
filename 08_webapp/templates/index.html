@@ -1,86 +1,105 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Earthquake Forecast Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <title>Predicting Earthquakes</title>
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
+    <!-- Leaflet + leaflet.heat: free, no API key (the original used the Google
+         Maps JS API with a key hardcoded in this file - removed, see app.py
+         docstring for why). Same heatmap-with-slider interaction. -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 
-<header>
-  <div class="title-block">
-    <h1>Earthquake Forecast Dashboard</h1>
-    <p class="subtitle">Automatic Earthquake Forecasting — MSc Data Science project.
-      Spatio-temporal M&ge;4.5 risk, 1&deg; grid, 7-day horizon.</p>
-  </div>
-  <div class="controls">
-    <label>Model
-      <select id="model-select">
-        {% for key, name in model_names.items() %}
-        <option value="{{ key }}" {% if key == best_model_key %}selected{% endif %}>
-          {{ name }}{% if key == best_model_key %} (best){% endif %}
-        </option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Alert threshold <span id="threshold-value">0.50</span>
-      <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0.5">
-    </label>
-    <label class="checkbox-label">
-      <input type="checkbox" id="toggle-recent" checked> Show recent M4.5+ quakes (30d)
-    </label>
-    <button id="refresh-btn" title="Recompute today's features from the current cleaned catalog">Refresh</button>
-  </div>
-</header>
+    <style>
+      /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+      #map {
+        height: 73%;
+        width: 100%;
+        background: #aad3df;
+      }
+      /* Optional: Makes the sample page fill the window. */
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
 
-<div id="alert-banner" class="alert-banner" hidden></div>
+  <body>
+        <table border=0 cellpadding="1" style="width: 100%; background-color:black;">
+            <tr>
+              <td><h1><p style="text-align:center"><font color="white">Earthquake Forecaster</font></p></h1></td>
+            </tr>
+        </table>
 
-<main>
-  <div id="map"></div>
 
-  <aside id="sidebar">
-    <section>
-      <h2>Forecast info</h2>
-      <table class="kv-table" id="forecast-info"><tbody></tbody></table>
-    </section>
+    <div id="map"></div>
+    <script>
 
-    <section>
-      <h2>Top risk cells</h2>
-      <table class="data-table" id="risk-table">
-        <thead><tr><th>#</th><th>Cell (lat, lon)</th><th>P(M&ge;4.5, 7d)</th><th>Events (7d)</th><th>Days since last</th></tr></thead>
-        <tbody></tbody>
+      var earthquakeHorizon = {{ earthquake_horizon | tojson }};
+      var map, heatmap;
+
+      function initMap() {
+        map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 10,
+        }).addTo(map);
+
+        heatmap = L.heatLayer(getPoints(), { radius: 30, blur: 25, maxZoom: 6 }).addTo(map);
+      }
+
+      function toggleHeatmap() {
+        if (map.hasLayer(heatmap)) {
+          map.removeLayer(heatmap);
+        } else {
+          heatmap.addTo(map);
+        }
+      }
+
+      // Heatmap data: [lat, lon, weight] triples, weight = predicted probability
+      function getPoints() {
+        return earthquakeHorizon;
+      }
+
+      initMap();
+    </script>
+
+        <table border=1 cellpadding="1" style="width:100%; background-color:black;">
+            <tr>
+                <td><p style="text-align:center">
+                  <form id='submit_params' method="POST" action="{{ url_for('build_page') }}">
+                    <div class="slidecontainer" style='width: 100%;'>
+                    <label><font color="white">Select future date: <span id="label_slider_value">{{date_horizon}}</span></font></label><BR>
+                    <input type="range" min="0" max="{{days_out_to_predict}}" value="{{current_value}}" name="slider_date_horizon"
+                      id="slider_date_horizon" step="1" style='width: 100%;'>
+                  </div>
+                </form>
+             </td>
+          </tr>
       </table>
-    </section>
 
-    <section>
-      <h2>Model comparison (held-out test set)</h2>
-      <table class="data-table" id="metrics-table">
-        <thead><tr><th>Model</th><th>ROC-AUC</th><th>PR-AUC</th><th>F1 (best thr.)</th><th>Brier</th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <p class="note" id="best-model-note"></p>
-    </section>
 
-    <section>
-      <h2>About this forecast</h2>
-      <p class="note">
-        Each cell shows the probability that a magnitude &ge;4.5 earthquake
-        occurs inside it within the next 7 days, estimated from rolling
-        seismicity rate, magnitude statistics, Gutenberg-Richter b-value,
-        and radiated energy computed as of the forecast date. Only "active"
-        grid cells (&ge;50 historical events) are modeled — see the project
-        README for the full target definition and known limitations
-        (short ~20-month catalog, coarse global grid).
-      </p>
-    </section>
-  </aside>
-</main>
+     <script>
+        // Slider logic
+        var slider1 = document.getElementById("slider_date_horizon");
+        var output1 = document.getElementById("label_slider_value");
 
-<script id="init-data" type="application/json">{"modelNames": {{ model_names | tojson }}, "bestModelKey": {{ best_model_key | tojson }}}</script>
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-</body>
+          slider1.onmouseup = function () {
+            document.getElementById("submit_params").submit();
+          }
+
+        slider1.oninput = function() {
+            var horizon_date = new Date();
+            horizon_date.setDate(horizon_date.getDate() + Math.trunc(parseInt(this.value)));
+            output1.innerHTML = (horizon_date.getMonth()+1) + "/" + horizon_date.getDate() + "/" + horizon_date.getFullYear(); //this.value;
+
+        }
+
+     </script>
+    </body>
 </html>

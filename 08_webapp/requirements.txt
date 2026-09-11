@@ -1,4 +1,4 @@
-# Additional dependencies for stage 08 (forecast dashboard), on top of
-# the root project's requirements.txt (pandas, numpy, scikit-learn,
-# xgboost, joblib - all reused directly, not reimplemented).
+# Stage 08 (forecast dashboard) additional dependency, on top of the root
+# project's requirements.txt (pandas, numpy, scikit-learn, xgboost - all
+# reused directly).
 flask==3.1.3

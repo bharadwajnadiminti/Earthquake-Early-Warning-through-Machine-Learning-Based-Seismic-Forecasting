@@ -203,19 +203,24 @@ tie-breaker given the class imbalance. Full numbers: run stage 06/07 and see
 
 ## Forecast dashboard (stage 08)
 
-`08_webapp/` implements the proposal's last two pipeline steps — **forecast
-output -> early warning alert** — as a local interactive dashboard: an
-OpenStreetMap/Leaflet map of every active cell's live predicted risk
-(color/size-coded, switchable across all three trained models), an
-early-warning alert banner with an adjustable probability threshold, a
-top-risk table, the stage 06 model comparison panel, and a recent-actual-
-M4.5+-quakes overlay for ground-truth context. It does not reimplement
-feature engineering — it imports `scripts/04_feature_engineering.py`'s own
-functions to compute "today"'s feature row per cell (the one row stage
-04's training matrix deliberately omits, since its target is unknowable),
-so the dashboard can never drift from what the models were trained on. No
-external API key is needed. Run it with `python 08_webapp/app.py`; see
-`08_webapp/README.md` for the full feature list and how it works.
+`08_webapp/` is a local interactive dashboard for the proposal's last two
+pipeline steps — **forecast output -> early warning alert**, combining
+two things kept deliberately separate:
+
+- **UI**: ported as-is from `temp/EarthquakeForecasting/Webapp/` (title
+  bar, single world map, one "select future date" slider) — only the
+  Google Maps JS API (a real-looking key hardcoded in the page source) is
+  swapped for Leaflet + leaflet.heat over free OpenStreetMap tiles, so
+  nothing gets committed to a public repo that shouldn't be.
+- **Data/model**: this project's own verified pipeline, not the reference
+  app's from-scratch-every-restart approach — `08_webapp/inference.py`
+  reuses `scripts/04_feature_engineering.py`'s own feature code and loads
+  the actual `GridSearchCV`-tuned, stage-06-evaluated XGBoost model from
+  `outputs/05_models/`.
+
+See `08_webapp/README.md` for exactly how the slider is wired to real
+forecast snapshots (honestly, since the model doesn't produce a true
+day-by-day breakdown) and how to run it.
 
 ## Known limitations (worth citing in a viva)
 
