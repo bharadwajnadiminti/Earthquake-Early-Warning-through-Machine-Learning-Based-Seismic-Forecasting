@@ -20,6 +20,9 @@ python 04_feature_engineering.py
 python 05_train_models.py
 python 06_evaluate_models.py
 python 07_generate_report.py
+cd ../08_webapp                         # optional: interactive forecast dashboard
+python -m pip install -r requirements.txt -r ../requirements.txt
+python app.py                           # -> http://127.0.0.1:5000
 ```
 
 Everything after stage 02 has already been run once; its outputs are
@@ -49,6 +52,9 @@ project/
     05_train_models.py                   chronological split + GridSearchCV(TimeSeriesSplit) tuning, 3 models
     06_evaluate_models.py                test-set metrics, curves, feature importance, best-model selection
     07_generate_report.py                assembles the final markdown report
+  08_webapp/                             stage 08: interactive forecast dashboard (Flask + Leaflet),
+                                          "forecast output -> early warning alert" made visual —
+                                          see 08_webapp/README.md for features and how it works
   outputs/
     02_profiling/                        stage 02: usgs_earthquake_profile.{html,json}
     03_processed/                        stage 03: 03_cleaned_catalog.csv, 03_cleaning_report.json
@@ -194,6 +200,22 @@ feature-importance plots. The best model is selected on test ROC-AUC (the
 metric GridSearchCV tuned on) with PR-AUC checked as a consistency
 tie-breaker given the class imbalance. Full numbers: run stage 06/07 and see
 `outputs/06_metrics/06_best_model.json` and `outputs/07_report/07_final_report.md`.
+
+## Forecast dashboard (stage 08)
+
+`08_webapp/` implements the proposal's last two pipeline steps — **forecast
+output -> early warning alert** — as a local interactive dashboard: an
+OpenStreetMap/Leaflet map of every active cell's live predicted risk
+(color/size-coded, switchable across all three trained models), an
+early-warning alert banner with an adjustable probability threshold, a
+top-risk table, the stage 06 model comparison panel, and a recent-actual-
+M4.5+-quakes overlay for ground-truth context. It does not reimplement
+feature engineering — it imports `scripts/04_feature_engineering.py`'s own
+functions to compute "today"'s feature row per cell (the one row stage
+04's training matrix deliberately omits, since its target is unknowable),
+so the dashboard can never drift from what the models were trained on. No
+external API key is needed. Run it with `python 08_webapp/app.py`; see
+`08_webapp/README.md` for the full feature list and how it works.
 
 ## Known limitations (worth citing in a viva)
 

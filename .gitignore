@@ -8,6 +8,11 @@ __pycache__/
 # (documented as unused by the pipeline in README.md).
 dataset/archive/
 
+# Third-party reference project (old single-model Flask demo + notebooks)
+# that 08_webapp/ was modeled on/improves upon - inspiration material, not
+# part of this project's own deliverable pipeline. See 08_webapp/README.md.
+temp/
+
 # Raw ydata-profiling JSON dump (~106MB) exceeds GitHub's 100MB file limit.
 # The human-readable HTML report (outputs/02_profiling/usgs_earthquake_profile.html)
 # is committed instead. Regenerate the JSON locally if needed:

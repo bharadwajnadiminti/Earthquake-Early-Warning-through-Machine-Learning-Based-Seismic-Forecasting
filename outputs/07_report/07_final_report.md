@@ -149,7 +149,11 @@ XGBoost selected as best model: highest test-set ROC-AUC (0.9073), the primary t
 
 Plots: `outputs/06_metrics/06_roc_curves.png`, `06_pr_curves.png`, `06_confusion_matrices.png`, `06_calibration_curves.png`, `06_feature_importance_<model>.png`.
 
-## 6. Reproducing This Report
+## 6. Forecast Dashboard (Web App)
+
+`08_webapp/` implements the proposal's last two pipeline steps - **forecast output -> early warning alert** - as a local interactive dashboard: a live risk map (switchable across all three models above), an adjustable-threshold early-warning banner, a top-risk table, this same model comparison panel, and a recent-actual-earthquakes overlay for ground-truth context. It reuses `scripts/04_feature_engineering.py`'s own functions to compute each active cell's current feature row (the one row the training matrix above deliberately omits, since its label isn't knowable yet), so it can never compute a feature differently than the models were trained on. Run with `python 08_webapp/app.py` -> http://127.0.0.1:5000 (no external API key required). See `08_webapp/README.md` for the full feature list.
+
+## 7. Reproducing This Report
 
 ```
 cd scripts
@@ -160,6 +164,7 @@ python 04_feature_engineering.py
 python 05_train_models.py
 python 06_evaluate_models.py
 python 07_generate_report.py
+cd ../08_webapp && python app.py  # optional: forecast dashboard
 ```
 
 See the top-level `README.md` for the full pipeline description.

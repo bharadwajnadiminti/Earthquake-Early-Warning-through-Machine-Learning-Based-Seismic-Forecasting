@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earthquake Forecast Dashboard</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header>
+  <div class="title-block">
+    <h1>Earthquake Forecast Dashboard</h1>
+    <p class="subtitle">Automatic Earthquake Forecasting — MSc Data Science project.
+      Spatio-temporal M&ge;4.5 risk, 1&deg; grid, 7-day horizon.</p>
+  </div>
+  <div class="controls">
+    <label>Model
+      <select id="model-select">
+        {% for key, name in model_names.items() %}
+        <option value="{{ key }}" {% if key == best_model_key %}selected{% endif %}>
+          {{ name }}{% if key == best_model_key %} (best){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Alert threshold <span id="threshold-value">0.50</span>
+      <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0.5">
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" id="toggle-recent" checked> Show recent M4.5+ quakes (30d)
+    </label>
+    <button id="refresh-btn" title="Recompute today's features from the current cleaned catalog">Refresh</button>
+  </div>
+</header>
+
+<div id="alert-banner" class="alert-banner" hidden></div>
+
+<main>
+  <div id="map"></div>
+
+  <aside id="sidebar">
+    <section>
+      <h2>Forecast info</h2>
+      <table class="kv-table" id="forecast-info"><tbody></tbody></table>
+    </section>
+
+    <section>
+      <h2>Top risk cells</h2>
+      <table class="data-table" id="risk-table">
+        <thead><tr><th>#</th><th>Cell (lat, lon)</th><th>P(M&ge;4.5, 7d)</th><th>Events (7d)</th><th>Days since last</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Model comparison (held-out test set)</h2>
+      <table class="data-table" id="metrics-table">
+        <thead><tr><th>Model</th><th>ROC-AUC</th><th>PR-AUC</th><th>F1 (best thr.)</th><th>Brier</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="note" id="best-model-note"></p>
+    </section>
+
+    <section>
+      <h2>About this forecast</h2>
+      <p class="note">
+        Each cell shows the probability that a magnitude &ge;4.5 earthquake
+        occurs inside it within the next 7 days, estimated from rolling
+        seismicity rate, magnitude statistics, Gutenberg-Richter b-value,
+        and radiated energy computed as of the forecast date. Only "active"
+        grid cells (&ge;50 historical events) are modeled — see the project
+        README for the full target definition and known limitations
+        (short ~20-month catalog, coarse global grid).
+      </p>
+    </section>
+  </aside>
+</main>
+
+<script id="init-data" type="application/json">{"modelNames": {{ model_names | tojson }}, "bestModelKey": {{ best_model_key | tojson }}}</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
