@@ -10,9 +10,10 @@ actual-earthquakes overlay for ground-truth context.
 
 Deliberately built against the already-verified pipeline artifacts rather
 than retraining anything: loads the saved models/imputer (stage 05) and
-recomputes only *today's* feature row per active cell (see inference.py)
+recomputes the last week's feature rows per active cell (see inference.py)
 by reusing stage 04's own feature-engineering code, so the dashboard can
-never compute a feature differently than the models were trained on.
+never compute a feature differently than the models were trained on. A
+day slider lets you scrub through the last 7 days' forecast snapshots.
 
 Run locally:
     pip install -r ../requirements.txt -r requirements.txt
@@ -39,15 +40,21 @@ def index():
 @app.route("/api/forecast")
 def api_forecast():
     force_refresh = request.args.get("refresh", "0") == "1"
-    df, asof_date, horizon_end_date = inference.get_forecast(force_refresh=force_refresh)
+    offset_days = int(request.args.get("offset", 0))
+    df, asof_date, day_date, horizon_end_date, available_days = inference.get_forecast(
+        offset_days=offset_days, force_refresh=force_refresh
+    )
     return jsonify({
         "asof_date": str(asof_date.date()),
+        "day_date": str(day_date.date()),
         "horizon_end_date": str(horizon_end_date.date()),
         "horizon_days": inference.FORECAST_HORIZON_DAYS,
         "mag_threshold": inference.MAG_THRESHOLD,
         "n_cells": len(df),
         "model_names": inference.model_display_names(),
         "best_model_key": inference.BEST_MODEL_KEY,
+        "offset_days": offset_days,
+        "available_days": [str(d.date()) for d in available_days],
         "cells": df.to_dict(orient="records"),
     })
 
@@ -66,8 +73,9 @@ def api_metrics():
 
 
 if __name__ == "__main__":
-    print("Precomputing today's forecast (first load can take ~20s - reuses stage 04's "
-          "feature code over the full catalog history for every active cell)...")
+    print("Precomputing the last week's forecast snapshots (first load can take ~20s - "
+          "reuses stage 04's feature code over the full catalog history for every active "
+          "cell, for each of the last 8 days)...")
     inference.get_forecast()
     print("Ready. Starting Flask dev server on http://127.0.0.1:5000")
     app.run(debug=True, use_reloader=False)

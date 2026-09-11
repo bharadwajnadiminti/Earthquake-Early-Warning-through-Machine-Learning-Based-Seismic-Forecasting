@@ -33,9 +33,16 @@
     <label class="checkbox-label">
       <input type="checkbox" id="toggle-recent" checked> Show recent M4.5+ quakes (30d)
     </label>
-    <button id="refresh-btn" title="Recompute today's features from the current cleaned catalog">Refresh</button>
+    <button id="refresh-btn" title="Recompute this week's features from the current cleaned catalog">Refresh</button>
   </div>
 </header>
+
+<div id="day-bar" class="day-bar">
+  <label for="day-slider">Forecast snapshot: <b id="day-label">today</b>
+    <span class="day-bar-hint">— drag to see how the model's 7-day-ahead outlook looked on earlier days this week</span>
+  </label>
+  <input type="range" id="day-slider" min="0" max="7" step="1" value="0">
+</div>
 
 <div id="alert-banner" class="alert-banner" hidden></div>
 
@@ -75,6 +82,10 @@
         grid cells (&ge;50 historical events) are modeled — see the project
         README for the full target definition and known limitations
         (short ~20-month catalog, coarse global grid).
+        The day slider does not break the 7-day window itself into daily
+        probabilities (the model doesn't produce that) — it switches
+        between the last several days' full forecast snapshots, each
+        showing that day's view of the following 7 days.
       </p>
     </section>
   </aside>

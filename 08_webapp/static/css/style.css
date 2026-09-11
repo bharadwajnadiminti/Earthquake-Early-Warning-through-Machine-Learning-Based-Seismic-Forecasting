@@ -79,6 +79,37 @@ header {
 #refresh-btn:hover { filter: brightness(1.1); }
 #refresh-btn:disabled { opacity: 0.6; cursor: wait; }
 
+.day-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+.day-bar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.day-bar label b {
+  color: var(--accent);
+  font-weight: 700;
+}
+.day-bar-hint {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-style: italic;
+}
+.day-bar input[type=range] {
+  flex: 1 1 auto;
+  max-width: 420px;
+  accent-color: var(--accent);
+}
+
 .alert-banner {
   background: var(--alert-bg);
   border-bottom: 2px solid var(--alert-border);
