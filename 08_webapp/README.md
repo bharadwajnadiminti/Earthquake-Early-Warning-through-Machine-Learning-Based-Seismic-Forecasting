@@ -26,14 +26,6 @@ No API key or external account needed — the map uses
 
 ## Features
 
-- **Forecast snapshot slider.** Scrub through the last 7 days of forecast
-  snapshots ("as of this day, here's the model's view of the following 7
-  days") — the closest equivalent to the reference app's date slider that's
-  still honest about what the model actually predicts. It does **not**
-  pretend to break the 7-day window itself into a day-by-day probability
-  (the model produces one probability for the whole window, not seven);
-  instead each position re-derives that day's own rolling features and
-  re-predicts from them, so the map genuinely changes as you drag it.
 - **Interactive risk map.** One marker per active (>=50-event) grid cell,
   sized/colored by the selected model's predicted P(M>=4.5 in the next 7
   days). Click a marker for the full feature breakdown behind that

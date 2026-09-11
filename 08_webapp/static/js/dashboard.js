@@ -15,8 +15,6 @@
   let forecastData = null;
   let currentModelKey = initData.bestModelKey;
   let threshold = 0.5;
-  let currentOffset = 0;
-  let availableDays = []; // newest (today) first; index = offset_days
 
   const modelSelect = document.getElementById("model-select");
   const thresholdSlider = document.getElementById("threshold-slider");
@@ -24,8 +22,6 @@
   const toggleRecent = document.getElementById("toggle-recent");
   const refreshBtn = document.getElementById("refresh-btn");
   const alertBanner = document.getElementById("alert-banner");
-  const daySlider = document.getElementById("day-slider");
-  const dayLabel = document.getElementById("day-label");
 
   function riskColor(p) {
     // green -> yellow -> red
@@ -42,19 +38,12 @@
     return cell["proba_" + modelKey];
   }
 
-  function dayOffsetLabel(offset, dateStr) {
-    if (offset === 0) return "today (" + dateStr + ")";
-    if (offset === 1) return "yesterday (" + dateStr + ")";
-    return offset + " days ago (" + dateStr + ")";
-  }
-
   function renderForecastInfo() {
     const tbody = document.querySelector("#forecast-info tbody");
     tbody.innerHTML = "";
     const rows = [
-      ["Viewing snapshot from", dayOffsetLabel(forecastData.offset_days, forecastData.day_date)],
-      ["Valid through", forecastData.horizon_end_date + " (" + forecastData.horizon_days + " days out)"],
-      ["Latest data available", forecastData.asof_date],
+      ["Forecast as of", forecastData.asof_date],
+      ["Horizon end", forecastData.horizon_end_date + " (" + forecastData.horizon_days + " days out)"],
       ["Magnitude threshold", "M " + forecastData.mag_threshold + "+"],
       ["Active cells modeled", forecastData.n_cells],
       ["Model shown", forecastData.model_names[currentModelKey]],
@@ -118,11 +107,10 @@
     const top = highRisk.slice(0, 6)
       .map((x) => "(" + x.cell.cell_lat.toFixed(1) + ", " + x.cell.cell_lon.toFixed(1) + ") " + fmtPct(x.p))
       .join(" &middot; ");
-    const asOfPhrase = forecastData.offset_days === 0 ? "" : " (snapshot from " + forecastData.day_date + ")";
     alertBanner.innerHTML =
       "&#9888; Early warning: <b>" + highRisk.length + "</b> cell(s) at or above " +
       fmtPct(threshold) + " probability of M&ge;" + forecastData.mag_threshold +
-      "+ by " + forecastData.horizon_end_date + asOfPhrase + " &mdash; " + top +
+      "+ by " + forecastData.horizon_end_date + " &mdash; " + top +
       (highRisk.length > 6 ? " &hellip;" : "");
     alertBanner.hidden = false;
   }
@@ -191,20 +179,13 @@
     renderRiskTable();
   }
 
-  async function loadForecast(forceRefresh, offsetDays) {
+  async function loadForecast(forceRefresh) {
     refreshBtn.disabled = true;
-    refreshBtn.textContent = forceRefresh ? "Refreshing..." : refreshBtn.textContent;
+    refreshBtn.textContent = "Refreshing...";
     try {
-      const params = new URLSearchParams();
-      if (forceRefresh) params.set("refresh", "1");
-      params.set("offset", offsetDays != null ? offsetDays : currentOffset);
-      const resp = await fetch("/api/forecast?" + params.toString());
+      const url = "/api/forecast" + (forceRefresh ? "?refresh=1" : "");
+      const resp = await fetch(url);
       forecastData = await resp.json();
-      currentOffset = forecastData.offset_days;
-      availableDays = forecastData.available_days;
-      daySlider.max = Math.max(0, availableDays.length - 1);
-      daySlider.value = currentOffset;
-      dayLabel.textContent = dayOffsetLabel(currentOffset, forecastData.day_date);
       refreshRenderAll();
     } finally {
       refreshBtn.disabled = false;
@@ -239,19 +220,7 @@
 
   refreshBtn.addEventListener("click", () => loadForecast(true));
 
-  // Live label while dragging (no fetch - cheap, all days are precomputed
-  // server-side); actual data swap only on release, same UX as the
-  // reference app's mouseup-triggered submit.
-  daySlider.addEventListener("input", () => {
-    const offset = parseInt(daySlider.value, 10);
-    const dateStr = availableDays[offset] || "";
-    dayLabel.textContent = dayOffsetLabel(offset, dateStr);
-  });
-  daySlider.addEventListener("change", () => {
-    loadForecast(false, parseInt(daySlider.value, 10));
-  });
-
-  loadForecast(false, 0);
+  loadForecast(false);
   loadQuakes();
   loadMetrics();
 })();
