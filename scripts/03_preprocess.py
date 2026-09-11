@@ -6,7 +6,7 @@ Cleans the raw USGS earthquake catalog and writes a chronologically sorted,
 UTC-normalized, deduplicated dataset ready for feature engineering (stage 04).
 
 Every cleaning decision below is driven by the ydata-profiling report from
-stage 02 (outputs/profiling/usgs_earthquake_profile.json), not guessed —
+stage 02 (outputs/02_profiling/usgs_earthquake_profile.json), not guessed —
 each step cites the specific finding it responds to:
 
   1. Deduplicate by event `id`, keep the row with the latest `updated`
@@ -61,8 +61,8 @@ each step cites the specific finding it responds to:
      but stored as text, not a datetime dtype).
 
 Input:  ../dataset/usgs_earthquake_catalog.csv
-Output: ../outputs/processed/03_cleaned_catalog.csv
-        ../outputs/processed/03_cleaning_report.json  (row counts at every step)
+Output: ../outputs/03_processed/03_cleaned_catalog.csv
+        ../outputs/03_processed/03_cleaning_report.json  (row counts at every step)
 """
 
 import argparse
@@ -89,8 +89,8 @@ DEPTH_BOUNDS = (-5.0, 700.0)  # km; see docstring point 4
 def main():
     p = argparse.ArgumentParser(description="Clean the raw USGS earthquake catalog (stage 03).")
     p.add_argument("--input", type=str, default="../dataset/usgs_earthquake_catalog.csv")
-    p.add_argument("--output", type=str, default="../outputs/processed/03_cleaned_catalog.csv")
-    p.add_argument("--report", type=str, default="../outputs/processed/03_cleaning_report.json")
+    p.add_argument("--output", type=str, default="../outputs/03_processed/03_cleaned_catalog.csv")
+    p.add_argument("--report", type=str, default="../outputs/03_processed/03_cleaning_report.json")
     p.add_argument("--eventtype", type=str, default="earthquake",
                    help="Event type to keep. Default 'earthquake' (matches stage 01's default filter).")
     args = p.parse_args()

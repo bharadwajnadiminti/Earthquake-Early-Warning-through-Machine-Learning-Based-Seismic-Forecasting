@@ -30,7 +30,7 @@ point forward without repeating earlier stages.
 > **Python version note:** this pipeline was built and run on Python 3.14.6.
 > `ydata-profiling` (stage 02 only) does not yet ship a build for Python
 > >=3.14 — stage 02's outputs are already generated and committed under
-> `outputs/profiling/`; you only need a separate Python <3.14 environment
+> `outputs/02_profiling/`; you only need a separate Python <3.14 environment
 > with `ydata-profiling==4.18.4` if you want to *re-run* stage 02 (e.g. on
 > a refreshed catalog).
 
@@ -50,18 +50,18 @@ project/
     06_evaluate_models.py                test-set metrics, curves, feature importance, best-model selection
     07_generate_report.py                assembles the final markdown report
   outputs/
-    profiling/                           stage 02: usgs_earthquake_profile.{html,json}
-    processed/                           stage 03: 03_cleaned_catalog.csv, 03_cleaning_report.json
-    features/                            stage 04: 04_feature_matrix.csv, 04_data_dictionary.csv,
+    02_profiling/                        stage 02: usgs_earthquake_profile.{html,json}
+    03_processed/                        stage 03: 03_cleaned_catalog.csv, 03_cleaning_report.json
+    04_features/                         stage 04: 04_feature_matrix.csv, 04_data_dictionary.csv,
                                           04_feature_engineering_report.json
-    models/                              stage 05: 05_model_<name>.pkl, 05_<name>_best_params.json,
+    05_models/                           stage 05: 05_model_<name>.pkl, 05_<name>_best_params.json,
                                           05_<name>_cv_results.csv, 05_imputer.pkl,
                                           05_feature_columns.json, 05_split_summary.json
-    metrics/                             stage 06: 06_evaluation_metrics.{json,csv}, 06_best_model.json,
+    06_metrics/                          stage 06: 06_evaluation_metrics.{json,csv}, 06_best_model.json,
                                           06_roc_curves.png, 06_pr_curves.png,
                                           06_confusion_matrices.png, 06_calibration_curves.png,
                                           06_feature_importance_<model>.png
-    report/                              stage 07: 07_final_report.md
+    07_report/                           stage 07: 07_final_report.md
   requirements.txt
   README.md
 ```
@@ -104,7 +104,7 @@ available (see "Known limitations" below).
 ## What stage 03 actually cleaned (cited from stage 02's profiling)
 
 All decisions below cite the specific ydata-profiling finding they respond
-to (`outputs/profiling/usgs_earthquake_profile.json`):
+to (`outputs/02_profiling/usgs_earthquake_profile.json`):
 
 | Finding (profiling alert) | Action taken |
 |---|---|
@@ -121,8 +121,8 @@ rely on the univariate stats/alerts and on domain reasoning instead.
 
 ## Features (stage 04)
 
-Full column-by-column reference: `outputs/features/04_data_dictionary.csv`
-(also embedded in `outputs/report/07_final_report.md`). Categories:
+Full column-by-column reference: `outputs/04_features/04_data_dictionary.csv`
+(also embedded in `outputs/07_report/07_final_report.md`). Categories:
 
 - **Time-based:** rolling event counts (7/30/90/365d) per cell, days since
   the cell's last event, cyclical day-of-year encoding.
@@ -140,7 +140,7 @@ Full column-by-column reference: `outputs/features/04_data_dictionary.csv`
 
 Some rolling-magnitude and b-value columns are legitimately `NaN` (no event
 in the window, or too few events for a reliable b-value estimate — see
-`outputs/features/04_data_dictionary.csv` for exact missing rates). Stage 05
+`outputs/04_features/04_data_dictionary.csv` for exact missing rates). Stage 05
 adds a `<col>_missing` indicator for every such column and median-imputes,
 **fit on the train split only**, before any model sees the data.
 
@@ -193,7 +193,7 @@ a calibration curve + Brier score, for all three models, plus ROC/PR/
 feature-importance plots. The best model is selected on test ROC-AUC (the
 metric GridSearchCV tuned on) with PR-AUC checked as a consistency
 tie-breaker given the class imbalance. Full numbers: run stage 06/07 and see
-`outputs/metrics/06_best_model.json` and `outputs/report/07_final_report.md`.
+`outputs/06_metrics/06_best_model.json` and `outputs/07_report/07_final_report.md`.
 
 ## Known limitations (worth citing in a viva)
 
@@ -207,7 +207,7 @@ tie-breaker given the class imbalance. Full numbers: run stage 06/07 and see
   particular don't fully "fill up" until a year into the catalog.
 - **b-value NaN rate.** `b_value_90d`/`b_value_365d` are NaN whenever a
   cell/window has too few qualifying events (see
-  `outputs/features/04_data_dictionary.csv` for the exact rate) —
+  `outputs/04_features/04_data_dictionary.csv` for the exact rate) —
   legitimate missingness, handled via missing-indicator + median imputation
   (stage 05), not an error.
 - **Global, coarse grid.** See "Flagged alternative" above — a regional,

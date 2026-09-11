@@ -6,13 +6,13 @@ Pulls together the target definition, feature list, model comparison table,
 best model and its metrics from every prior stage's saved outputs into one
 markdown report meant to be lifted straight into the MSc project report.
 
-Input:  ../outputs/features/04_feature_engineering_report.json
-        ../outputs/features/04_data_dictionary.csv
-        ../outputs/models/05_split_summary.json
-        ../outputs/models/05_*_best_params.json
-        ../outputs/metrics/06_evaluation_metrics.json
-        ../outputs/metrics/06_best_model.json
-Output: ../outputs/report/07_final_report.md
+Input:  ../outputs/04_features/04_feature_engineering_report.json
+        ../outputs/04_features/04_data_dictionary.csv
+        ../outputs/05_models/05_split_summary.json
+        ../outputs/05_models/05_*_best_params.json
+        ../outputs/06_metrics/06_evaluation_metrics.json
+        ../outputs/06_metrics/06_best_model.json
+Output: ../outputs/07_report/07_final_report.md
 """
 
 import argparse
@@ -33,10 +33,10 @@ def fmt_pct(x):
 
 def main():
     p = argparse.ArgumentParser(description="Generate the final markdown report (stage 07).")
-    p.add_argument("--features-dir", type=str, default="../outputs/features")
-    p.add_argument("--models-dir", type=str, default="../outputs/models")
-    p.add_argument("--metrics-dir", type=str, default="../outputs/metrics")
-    p.add_argument("--outdir", type=str, default="../outputs/report")
+    p.add_argument("--features-dir", type=str, default="../outputs/04_features")
+    p.add_argument("--models-dir", type=str, default="../outputs/05_models")
+    p.add_argument("--metrics-dir", type=str, default="../outputs/06_metrics")
+    p.add_argument("--outdir", type=str, default="../outputs/07_report")
     args = p.parse_args()
 
     features_dir = Path(args.features_dir)
@@ -116,7 +116,7 @@ def main():
     # --- 2. Feature list -------------------------------------------------------
     lines.append("## 2. Features\n")
     lines.append(f"{len(data_dict)} columns total (including `day`, `cell_lat`, `cell_lon`, and `target`). "
-                  "Full data dictionary: `outputs/features/04_data_dictionary.csv`.\n")
+                  "Full data dictionary: `outputs/04_features/04_data_dictionary.csv`.\n")
     lines.append("| Column | Type | % Missing | Description |")
     lines.append("|---|---|---|---|")
     for _, row in data_dict.iterrows():
@@ -174,7 +174,7 @@ def main():
     lines.append(f"| Brier score (calibration) | {bm['brier_score']:.4f} |")
     lines.append(f"| Confusion matrix @ 0.5 [[TN,FP],[FN,TP]] | {bm['confusion_matrix_at_0.5']} |")
     lines.append("")
-    lines.append("Plots: `outputs/metrics/06_roc_curves.png`, `06_pr_curves.png`, "
+    lines.append("Plots: `outputs/06_metrics/06_roc_curves.png`, `06_pr_curves.png`, "
                   "`06_confusion_matrices.png`, `06_calibration_curves.png`, "
                   "`06_feature_importance_<model>.png`.\n")
 

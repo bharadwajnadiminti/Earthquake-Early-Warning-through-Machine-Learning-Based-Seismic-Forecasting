@@ -66,13 +66,13 @@ NaNs are median-imputed using an imputer FIT ON THE TRAIN SPLIT ONLY and
 applied unchanged to val/test (fitting on the full dataset would leak
 future information backward into training).
 
-Input:  ../outputs/features/04_feature_matrix.csv
-Output: ../outputs/models/05_model_<name>.pkl               (fitted model)
-        ../outputs/models/05_<name>_best_params.json
-        ../outputs/models/05_<name>_cv_results.csv
-        ../outputs/models/05_imputer.pkl
-        ../outputs/models/05_split_summary.json
-        ../outputs/models/05_feature_columns.json
+Input:  ../outputs/04_features/04_feature_matrix.csv
+Output: ../outputs/05_models/05_model_<name>.pkl               (fitted model)
+        ../outputs/05_models/05_<name>_best_params.json
+        ../outputs/05_models/05_<name>_cv_results.csv
+        ../outputs/05_models/05_imputer.pkl
+        ../outputs/05_models/05_split_summary.json
+        ../outputs/05_models/05_feature_columns.json
 """
 
 import argparse
@@ -100,7 +100,7 @@ TRAIN_FRAC = 0.70
 VAL_FRAC = 0.15             # remainder (~0.15) is test
 CV_N_SPLITS = 5
 
-MODELS_DIR = Path("../outputs/models")
+MODELS_DIR = Path("../outputs/05_models")
 
 
 def chronological_split(df, day_col="day"):
@@ -204,8 +204,8 @@ def train_xgboost_manual_grid(X, y, X_val, y_val, cv, grid, fixed_params):
 
 def main():
     p = argparse.ArgumentParser(description="Train + tune the three candidate models (stage 05).")
-    p.add_argument("--input", type=str, default="../outputs/features/04_feature_matrix.csv")
-    p.add_argument("--outdir", type=str, default="../outputs/models")
+    p.add_argument("--input", type=str, default="../outputs/04_features/04_feature_matrix.csv")
+    p.add_argument("--outdir", type=str, default="../outputs/05_models")
     p.add_argument("--cv-splits", type=int, default=CV_N_SPLITS)
     p.add_argument("--skip", type=str, default="", help="Comma-separated model names to skip, e.g. 'adaboost_rf'")
     args = p.parse_args()

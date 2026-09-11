@@ -42,7 +42,7 @@ for both .html and .json):
 
     python 02_generate_profile_report.py \
         --input ../dataset/usgs_earthquake_catalog.csv \
-        --output ../outputs/profiling/usgs_earthquake_profile.html
+        --output ../outputs/02_profiling/usgs_earthquake_profile.html
 
 Full report (all interactions/correlations — slower, try on a sample first):
 
@@ -58,7 +58,7 @@ OPTIONS
 --input     Path to the catalog CSV. Default: ../dataset/usgs_earthquake_catalog.csv
 --output    Base output path (extension is ignored/stripped; .html and
             .json are both written next to it).
-            Default: ../outputs/profiling/usgs_earthquake_profile
+            Default: ../outputs/02_profiling/usgs_earthquake_profile
 --mode      'minimal' (fast, default — skips expensive interactions/
             correlations, still gives full per-column stats) or
             'full' (every section ydata-profiling can compute).
@@ -106,7 +106,7 @@ def load_catalog(path: Path) -> pd.DataFrame:
 def main():
     p = argparse.ArgumentParser(description="First-level EDA on the USGS earthquake catalog with ydata-profiling.")
     p.add_argument("--input", type=str, default="../dataset/usgs_earthquake_catalog.csv")
-    p.add_argument("--output", type=str, default="../outputs/profiling/usgs_earthquake_profile",
+    p.add_argument("--output", type=str, default="../outputs/02_profiling/usgs_earthquake_profile",
                    help="Base path; .html/.json are appended. Any extension you pass is stripped.")
     p.add_argument("--mode", choices=["minimal", "full"], default="minimal")
     p.add_argument("--sample", type=int, default=None,

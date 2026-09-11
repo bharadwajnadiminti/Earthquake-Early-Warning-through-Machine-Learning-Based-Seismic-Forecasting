@@ -12,16 +12,16 @@ reported separately and clearly labeled), a confusion matrix, and a
 calibration curve (+ Brier score). All three are compared in one table.
 ROC curves, PR curves, and feature-importance plots are saved as PNG.
 
-Input:  ../outputs/features/04_feature_matrix.csv
-        ../outputs/models/05_model_*.pkl, 05_imputer.pkl, 05_feature_columns.json
-Output: ../outputs/metrics/06_evaluation_metrics.json
-        ../outputs/metrics/06_evaluation_metrics.csv   (comparison table)
-        ../outputs/metrics/06_roc_curves.png
-        ../outputs/metrics/06_pr_curves.png
-        ../outputs/metrics/06_confusion_matrices.png
-        ../outputs/metrics/06_calibration_curves.png
-        ../outputs/metrics/06_feature_importance_<model>.png
-        ../outputs/metrics/06_best_model.json
+Input:  ../outputs/04_features/04_feature_matrix.csv
+        ../outputs/05_models/05_model_*.pkl, 05_imputer.pkl, 05_feature_columns.json
+Output: ../outputs/06_metrics/06_evaluation_metrics.json
+        ../outputs/06_metrics/06_evaluation_metrics.csv   (comparison table)
+        ../outputs/06_metrics/06_roc_curves.png
+        ../outputs/06_metrics/06_pr_curves.png
+        ../outputs/06_metrics/06_confusion_matrices.png
+        ../outputs/06_metrics/06_calibration_curves.png
+        ../outputs/06_metrics/06_feature_importance_<model>.png
+        ../outputs/06_metrics/06_best_model.json
 """
 
 import argparse
@@ -75,9 +75,9 @@ def chronological_split(df, day_col="day"):
 
 def main():
     p = argparse.ArgumentParser(description="Evaluate the three tuned models on the test split (stage 06).")
-    p.add_argument("--features", type=str, default="../outputs/features/04_feature_matrix.csv")
-    p.add_argument("--models-dir", type=str, default="../outputs/models")
-    p.add_argument("--outdir", type=str, default="../outputs/metrics")
+    p.add_argument("--features", type=str, default="../outputs/04_features/04_feature_matrix.csv")
+    p.add_argument("--models-dir", type=str, default="../outputs/05_models")
+    p.add_argument("--outdir", type=str, default="../outputs/06_metrics")
     args = p.parse_args()
 
     models_dir = Path(args.models_dir)

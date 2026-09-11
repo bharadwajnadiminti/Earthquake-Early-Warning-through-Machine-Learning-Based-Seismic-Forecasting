@@ -79,7 +79,7 @@ earthquake forecasting research:
 --------------------------------------------------------------------------
 FEATURES
 --------------------------------------------------------------------------
-See outputs/features/04_data_dictionary.csv (written by this script) for
+See outputs/04_features/04_data_dictionary.csv (written by this script) for
 the full, authoritative column-by-column description. Categories:
   - Time-based:      rolling event counts (7/30/90/365d), days since last
                       event in cell, cyclical day-of-year encoding.
@@ -93,10 +93,10 @@ the full, authoritative column-by-column description. Categories:
                       magnitude (Mc), per-cell historical event count as of
                       day t (seismicity "maturity" of the cell).
 
-Input:  ../outputs/processed/03_cleaned_catalog.csv
-Output: ../outputs/features/04_feature_matrix.csv
-        ../outputs/features/04_data_dictionary.csv
-        ../outputs/features/04_feature_engineering_report.json
+Input:  ../outputs/03_processed/03_cleaned_catalog.csv
+Output: ../outputs/04_features/04_feature_matrix.csv
+        ../outputs/04_features/04_data_dictionary.csv
+        ../outputs/04_features/04_feature_engineering_report.json
 """
 
 import argparse
@@ -195,10 +195,10 @@ def compute_cell_features(g, all_days, mc_cell, mag_threshold):
 
 def main():
     p = argparse.ArgumentParser(description="Feature engineering + spatio-temporal target labeling (stage 04).")
-    p.add_argument("--input", type=str, default="../outputs/processed/03_cleaned_catalog.csv")
-    p.add_argument("--output", type=str, default="../outputs/features/04_feature_matrix.csv")
-    p.add_argument("--dictionary", type=str, default="../outputs/features/04_data_dictionary.csv")
-    p.add_argument("--report", type=str, default="../outputs/features/04_feature_engineering_report.json")
+    p.add_argument("--input", type=str, default="../outputs/03_processed/03_cleaned_catalog.csv")
+    p.add_argument("--output", type=str, default="../outputs/04_features/04_feature_matrix.csv")
+    p.add_argument("--dictionary", type=str, default="../outputs/04_features/04_data_dictionary.csv")
+    p.add_argument("--report", type=str, default="../outputs/04_features/04_feature_engineering_report.json")
     p.add_argument("--mag-threshold", type=float, default=4.5,
                    help="Magnitude threshold defining a 'significant' event for the label. Default 4.5.")
     p.add_argument("--min-events-per-cell", type=int, default=MIN_EVENTS_PER_CELL)

@@ -21,7 +21,7 @@ For every active cell *c* and day *t*: **y=1** if at least one event with magnit
 
 ## 2. Features
 
-29 columns total (including `day`, `cell_lat`, `cell_lon`, and `target`). Full data dictionary: `outputs/features/04_data_dictionary.csv`.
+29 columns total (including `day`, `cell_lat`, `cell_lon`, and `target`). Full data dictionary: `outputs/04_features/04_data_dictionary.csv`.
 
 | Column | Type | % Missing | Description |
 |---|---|---|---|
@@ -147,7 +147,7 @@ XGBoost selected as best model: highest test-set ROC-AUC (0.9073), the primary t
 | Brier score (calibration) | 0.1364 |
 | Confusion matrix @ 0.5 [[TN,FP],[FN,TP]] | [[23723, 5861], [188, 1785]] |
 
-Plots: `outputs/metrics/06_roc_curves.png`, `06_pr_curves.png`, `06_confusion_matrices.png`, `06_calibration_curves.png`, `06_feature_importance_<model>.png`.
+Plots: `outputs/06_metrics/06_roc_curves.png`, `06_pr_curves.png`, `06_confusion_matrices.png`, `06_calibration_curves.png`, `06_feature_importance_<model>.png`.
 
 ## 6. Reproducing This Report
 

@@ -1,6 +1,6 @@
 {
   "input_file": "..\\dataset\\usgs_earthquake_catalog.csv",
-  "output_file": "..\\outputs\\processed\\03_cleaned_catalog.csv",
+  "output_file": "..\\outputs\\03_processed\\03_cleaned_catalog.csv",
   "steps": [
     {
       "step": "00_raw_loaded",
