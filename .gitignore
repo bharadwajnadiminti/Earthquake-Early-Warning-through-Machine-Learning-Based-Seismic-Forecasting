@@ -3,6 +3,8 @@ __pycache__/
 .idea/
 .vscode/
 *.bak
+.pytest_cache/
+.coverage
 
 # Superseded raw snapshot, duplicate of dataset/usgs_earthquake_catalog.csv
 # (documented as unused by the pipeline in README.md).

@@ -1,0 +1,4 @@
+# Test-only dependencies for stage 08 (not needed to run the app itself,
+# only to run its test suite: pytest test_*.py + coverage measurement).
+pytest==8.3.4
+pytest-cov==6.0.0

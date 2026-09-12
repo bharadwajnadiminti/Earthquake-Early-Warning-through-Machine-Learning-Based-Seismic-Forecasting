@@ -5,11 +5,13 @@ early warning alert** — as a local interactive dashboard, combining:
 
 - **UI/interaction**: ported from `temp/EarthquakeForecasting/Webapp/`
   as-is (title bar, single world map, one "select future date" slider) -
-  see `templates/index.html`. The only change is swapping the original's
-  Google Maps JS API (which had a real-looking key hardcoded in the page
-  source) for Leaflet + leaflet.heat over free OpenStreetMap tiles - no
-  API key needed, and nothing gets committed to a public repo that
-  shouldn't be.
+  see `templates/index.html`. The original's Google Maps JS API (a real-
+  looking key hardcoded in the page source, and since discontinued for
+  the heatmap feature it used) is swapped for Leaflet + Esri tiles - no
+  API key needed. One circle marker per active cell, colored/sized
+  continuously by that cell's own predicted probability, rather than a
+  blended heatmap - what you see is exactly what the model predicted for
+  that cell, nothing smoothed in between.
 - **Data pulling and model building**: this project's own verified
   pipeline, NOT the reference app's from-scratch-every-restart approach.
   `inference.py` reuses `scripts/04_feature_engineering.py`'s own feature
@@ -53,7 +55,7 @@ real forecast snapshot (today-7's), so the map is never blank.
 ## Files
 
 - `app.py` — Flask routes; maps the slider to a forecast snapshot and
-  renders the heatmap points.
+  builds the per-cell points sent to the page.
 - `inference.py` — loads the stage 05 model/imputer/feature-columns and
   computes live features per active cell for the last 8 days (see its own
   docstring for why the committed `outputs/04_features/` matrix alone
@@ -61,6 +63,44 @@ real forecast snapshot (today-7's), so the map is never blank.
   needs).
 - `templates/index.html` — the page, ported from the reference app with
   Leaflet swapped in for Google Maps.
+- `static/js/risk-scale.js` — the color/radius scale for a predicted
+  probability, pulled out of the page's inline script specifically so it
+  can be unit tested with plain Node (see Tests below) instead of only
+  ever being checked by eye in a browser.
+
+## Tests
+
+100% line + branch coverage on `app.py` and `inference.py`, plus a small
+Node suite for the one piece of client-side JS that's pure logic
+(`static/js/risk-scale.js`).
+
+```bash
+# Python (pytest + coverage, config in pytest.ini / .coveragerc)
+cd 08_webapp
+py -3.14 -m pip install -r requirements.txt -r requirements-dev.txt -r ../requirements.txt
+py -3.14 -m pytest --cov=. --cov-report=term-missing
+# -> 24 passed, app.py 100%, inference.py 100% (line + branch)
+
+# JS (Node's built-in test runner - no npm install needed)
+node --test tests/js/risk-scale.test.js
+# -> 12 passed
+```
+
+Notes on how the suite gets to 100% honestly rather than by testing
+around the hard parts:
+- `inference.get_forecast()` rereads the full cleaned catalog and
+  recomputes rolling-window features for all 372 active cells (~15s) -
+  a session-scoped autouse fixture (`tests/conftest.py`) warms this cache
+  **once** for the whole run; most tests then just read it.
+- Branch logic that real data can't reliably exercise (a missing model
+  file in `outputs/05_models/`, a `None` predicted probability) is tested
+  against small, deliberately-constructed synthetic inputs instead of
+  hoping real data happens to hit that case.
+- The `if __name__ == "__main__":` dev-server bootstrap in `app.py` is
+  excluded via `.coveragerc` (`exclude_lines`), not tested around — there
+  is nothing a unit test can assert about "a real server actually started"
+  short of an integration test that boots one, which is a different kind
+  of test than this suite is for.
 
 ## Known limitations
 

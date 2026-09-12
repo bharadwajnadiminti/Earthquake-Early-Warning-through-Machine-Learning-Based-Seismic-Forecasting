@@ -1,0 +1,18 @@
+[run]
+source = .
+branch = True
+omit =
+    tests/*
+    run_reference_app.py
+
+[report]
+# The dev-server bootstrap block (`if __name__ == "__main__": ... app.run(...)`)
+# starts a real, blocking Flask server - there is nothing meaningful a unit
+# test can assert about it short of actually booting a server process, which
+# is an integration/E2E concern, not unit coverage. Excluding it here is the
+# standard, explicit way to keep a 100% target honest instead of padding it
+# with a test that mocks away the very thing the block does.
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+show_missing = True

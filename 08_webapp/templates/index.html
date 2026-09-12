@@ -12,6 +12,10 @@
          not a smoothed/interpolated surface. -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <!-- Pure color/radius-scale logic lives in its own file so it can be
+         unit tested with plain Node (tests/js/risk-scale.test.js) instead
+         of only ever being checked by eye - see that file's header comment. -->
+    <script src="{{ url_for('static', filename='js/risk-scale.js') }}"></script>
 
     <style>
       /* Always set the map height explicitly to define the size of the div
@@ -27,6 +31,38 @@
         margin: 0;
         padding: 0;
       }
+
+      /* Reference app's Google Maps gave it a permanently-visible "Map |
+         Satellite" two-button toggle (white rounded box, top-left) rather
+         than an icon you have to open - `collapsed:false` below keeps
+         Leaflet's control always expanded, and this restyles its default
+         checkbox-list look into that same segmented-button look. */
+      .leaflet-control-layers {
+        border-radius: 2px;
+        box-shadow: 0 1px 4px rgba(0,0,0,.3);
+        font-family: Roboto, Arial, sans-serif;
+        overflow: hidden;
+      }
+      /* The actual per-layer <label>s live in .leaflet-control-layers-base,
+         nested one level inside .leaflet-control-layers-list (which also
+         holds the separator/overlays sections we don't use) - flex has to
+         go on -base itself, not -list, to lay "Map"/"Satellite" out as
+         side-by-side tabs instead of a stacked list. */
+      .leaflet-control-layers-base { display: flex; }
+      .leaflet-control-layers-base label {
+        margin: 0;
+        padding: 8px 16px;
+        cursor: pointer;
+        font-size: 13px;
+        color: #000;
+        user-select: none;
+      }
+      .leaflet-control-layers-base label input { display: none; }
+      .leaflet-control-layers-base label.active {
+        background: #f0f0f0;
+        font-weight: bold;
+      }
+      .leaflet-control-layers-separator { display: none; }
     </style>
   </head>
 
@@ -44,36 +80,14 @@
       var earthquakeHorizon = {{ earthquake_horizon | tojson }};
       var map, pointsLayer;
 
-      // Continuous color + size scale by predicted probability, not
-      // discrete buckets. Day-to-day, most active cells' probabilities
-      // move by a few hundredths (e.g. 0.82 -> 0.73), which is a real,
-      // model-driven change - but 4 discrete color buckets swallowed
-      // moves that didn't cross a bucket edge, making the map look
-      // static across the slider even though the numbers underneath
-      // were genuinely updating. Interpolating continuously (green ->
-      // yellow -> orange -> red, ColorBrewer RdYlGn-reversed stops) and
-      // also scaling marker radius with probability means every real
-      // change is visible, not just ones that cross a threshold.
-      var PROB_MIN = 0.3;   // the display cutoff - anything below isn't shown at all
-      var COLOR_STOPS = [
-        [145, 207, 96],   // low end of shown range
-        [254, 224, 139],
-        [252, 141, 89],
-        [215, 48, 39],    // p = 1.0
-      ];
-      function colorForProb(p) {
-        var t = Math.max(0, Math.min(1, (p - PROB_MIN) / (1 - PROB_MIN)));
-        var seg = t * (COLOR_STOPS.length - 1);
-        var i = Math.min(COLOR_STOPS.length - 2, Math.floor(seg));
-        var f = seg - i;
-        var a = COLOR_STOPS[i], b = COLOR_STOPS[i + 1];
-        var rgb = [0, 1, 2].map(function (c) { return Math.round(a[c] + (b[c] - a[c]) * f); });
-        return 'rgb(' + rgb.join(',') + ')';
-      }
-      function radiusForProb(p) {
-        var t = Math.max(0, Math.min(1, (p - PROB_MIN) / (1 - PROB_MIN)));
-        return 5 + 9 * t; // 5px at the cutoff, 14px at p=1.0
-      }
+      // colorForProb / radiusForProb now come from static/js/risk-scale.js
+      // (loaded above) - continuous color + size scale by predicted
+      // probability, not discrete buckets. Day-to-day, most active cells'
+      // probabilities move by a few hundredths (e.g. 0.82 -> 0.73), which
+      // is a real, model-driven change - discrete color buckets used to
+      // swallow moves that didn't cross a bucket edge, making the map look
+      // static across the slider even though the numbers underneath were
+      // genuinely updating.
 
       // The slider does a full form POST -> full page reload (this is a
       // plain server-rendered Flask app, not a single-page app), so
@@ -103,12 +117,17 @@
         // infinite horizontal wrap - without them, zooming out past
         // "the whole world fits once" repeats the map side-by-side
         // indefinitely as you pan/zoom out.
+        // zoomSnap/zoomDelta of 0.25 allow the fractional zoom (1.5) the
+        // reference app opened at, instead of Leaflet's default integer-
+        // only zoom levels.
         var worldBounds = L.latLngBounds([-90, -180], [90, 180]);
         map = L.map('map', {
-          minZoom: 2,
+          minZoom: 1.5,
+          zoomSnap: 0.25,
+          zoomDelta: 0.5,
           maxBounds: worldBounds,
           maxBoundsViscosity: 1.0,
-        }).setView(saved.center || [0, 0], saved.zoom || 2);
+        }).setView(saved.center || [0, 0], saved.zoom || 1.5);
 
         // "Map": Esri World Street Map - labeled countries/places + cream
         // landmass / light-blue ocean, the closest free (no API key) look-
@@ -135,10 +154,26 @@
         // move (defaults to "Map" the very first time).
         (saved.baseLayer === 'Satellite' ? satellite : roadmap).addTo(map);
 
+        // collapsed:false keeps it permanently open as a "Map | Satellite"
+        // toggle (see CSS above), matching the reference app's always-
+        // visible Google Maps control, instead of Leaflet's default
+        // icon-that-expands-on-hover.
         var baseLayers = { 'Map': roadmap, 'Satellite': satellite };
-        L.control.layers(baseLayers, null, { position: 'topleft' }).addTo(map);
+        var layersControl = L.control.layers(baseLayers, null, { position: 'topleft', collapsed: false }).addTo(map);
 
-        map.on('baselayerchange', function (e) { saveView({ baseLayer: e.name }); });
+        function markActiveBaseLayer(name) {
+          var labels = layersControl.getContainer().querySelectorAll('.leaflet-control-layers-base label');
+          labels.forEach(function (label) {
+            var isThis = label.textContent.trim() === name;
+            label.classList.toggle('active', isThis);
+          });
+        }
+        markActiveBaseLayer(saved.baseLayer === 'Satellite' ? 'Satellite' : 'Map');
+
+        map.on('baselayerchange', function (e) {
+          saveView({ baseLayer: e.name });
+          markActiveBaseLayer(e.name);
+        });
         map.on('moveend', function () {
           saveView({ center: map.getCenter(), zoom: map.getZoom() });
         });
