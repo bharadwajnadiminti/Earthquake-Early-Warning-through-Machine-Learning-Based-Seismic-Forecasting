@@ -21,7 +21,7 @@ For every active cell *c* and day *t*: **y=1** if at least one event with magnit
 
 ## 2. Features
 
-29 columns total (including `day`, `cell_lat`, `cell_lon`, and `target`). Full data dictionary: `outputs/04_features/04_data_dictionary.csv`.
+34 columns total (including `day`, `cell_lat`, `cell_lon`, and `target`). Full data dictionary: `outputs/04_features/04_data_dictionary.csv`.
 
 | Column | Type | % Missing | Description |
 |---|---|---|---|
@@ -47,6 +47,11 @@ For every active cell *c* and day *t*: **y=1** if at least one event with magnit
 | `rolling_mean_mag_365d` | float64 | 0.021% | Mean magnitude of events in this cell in the trailing 365-day window. NaN if no events in the window. |
 | `rolling_max_mag_365d` | float64 | 0.021% | Max magnitude of events in this cell in the trailing 365-day window. NaN if no events in the window. |
 | `log_energy_365d` | float64 | 0.0% | log10(1 + sum of radiated seismic energy [Joules, via 10^(1.5*mag+4.8)] over the trailing 365-day window). |
+| `decay_count_hl3d` | float64 | 0.0% | Exponentially recency-weighted running event count for this cell (half-life 3 days: an event this many days old retains half its weight, 6 days old a quarter, decaying forever rather than dropping to zero outside a fixed window). Prioritizes very recent activity far more than the flat rolling_count windows above. |
+| `decay_log_energy_hl3d` | float64 | 0.0% | log10(1 + exponentially recency-weighted running radiated-energy sum, half-life 3 days) - same decay idea as decay_count_hl3d applied to energy instead of raw counts. |
+| `decay_count_hl10d` | float64 | 0.0% | Exponentially recency-weighted running event count for this cell (half-life 10 days: an event this many days old retains half its weight, 20 days old a quarter, decaying forever rather than dropping to zero outside a fixed window). Prioritizes very recent activity far more than the flat rolling_count windows above. |
+| `decay_log_energy_hl10d` | float64 | 0.0% | log10(1 + exponentially recency-weighted running radiated-energy sum, half-life 10 days) - same decay idea as decay_count_hl10d applied to energy instead of raw counts. |
+| `neighbor_decay_count_hl3d` | float64 | 0.0% | Exponentially recency-weighted running event count (half-life 3 days), summed over this cell's 8 surrounding 1x1 degree cells (Moore neighborhood) - NOT this cell's own events. Captures geographic spillover (cluster/aftershock migration into neighboring territory) that cell_lat/cell_lon alone, used only as a static coordinate, cannot represent. |
 | `b_value_90d` | float64 | 54.46% | Gutenberg-Richter b-value (Aki/Utsu MLE) over the trailing 90-day window, using events >= mc_cell. NaN if fewer than 10 qualifying events in the window (unreliable estimate). |
 | `b_value_90d_n_events` | float64 | 0.0% | Number of events >= mc_cell used in the 90-day b-value estimate (reliability indicator for b_value_90d). |
 | `b_value_365d` | float64 | 26.186% | Gutenberg-Richter b-value (Aki/Utsu MLE) over the trailing 365-day window, using events >= mc_cell. NaN if fewer than 10 qualifying events in the window (unreliable estimate). |
@@ -69,9 +74,9 @@ For every active cell *c* and day *t*: **y=1** if at least one event with magnit
 
 | model                    |   roc_auc |   pr_auc |   precision@0.5 |   recall@0.5 |   f1@0.5 |   f1@best_thresh |   brier_score |
 |:-------------------------|----------:|---------:|----------------:|-------------:|---------:|-----------------:|--------------:|
-| XGBoost                  |  0.907313 | 0.435317 |        0.233455 |     0.904714 | 0.37114  |         0.427691 |      0.136388 |
-| AdaBoost + Random Forest |  0.89453  | 0.288482 |        0.23805  |     0.896097 | 0.37617  |         0.41865  |      0.151979 |
-| AdaBoost + Decision Tree |  0.861822 | 0.246322 |        0.232224 |     0.883933 | 0.367816 |         0.408807 |      0.144687 |
+| XGBoost                  |  0.907933 | 0.44142  |        0.230204 |     0.904714 | 0.36702  |         0.434299 |      0.136331 |
+| AdaBoost + Random Forest |  0.890338 | 0.275273 |        0.237482 |     0.896604 | 0.375504 |         0.379739 |      0.147555 |
+| AdaBoost + Decision Tree |  0.862712 | 0.244046 |        0.229744 |     0.873796 | 0.363828 |         0.404388 |      0.145926 |
 
 Tuning: GridSearchCV, `scoring='roc_auc'`, `TimeSeriesSplit` (n_splits=5, gap~2312 rows) on the train split only.
 
@@ -82,7 +87,7 @@ Tuning: GridSearchCV, `scoring='roc_auc'`, `TimeSeriesSplit` (n_splits=5, gap~23
     "estimator__max_depth": 5,
     "n_estimators": 200
   },
-  "best_cv_roc_auc": 0.8813579478937514,
+  "best_cv_roc_auc": 0.8848660433359644,
   "fixed_params": {
     "learning_rate": 0.6,
     "algorithm": "SAMME (only option in sklearn>=1.6)"
@@ -97,7 +102,7 @@ Tuning: GridSearchCV, `scoring='roc_auc'`, `TimeSeriesSplit` (n_splits=5, gap~23
     "estimator__max_features": "log2",
     "n_estimators": 200
   },
-  "best_cv_roc_auc": 0.8875688038326534,
+  "best_cv_roc_auc": 0.883058611685559,
   "fixed_params": {
     "inner_rf_n_estimators": 15,
     "inner_rf_max_depth": 4,
@@ -112,9 +117,9 @@ Tuning: GridSearchCV, `scoring='roc_auc'`, `TimeSeriesSplit` (n_splits=5, gap~23
   "best_params": {
     "n_estimators": 2000,
     "max_depth": 4,
-    "learning_rate": 0.1
+    "learning_rate": 0.03
   },
-  "best_iteration": 55,
+  "best_iteration": 170,
   "fixed_params": {
     "objective": "binary:logistic",
     "booster": "gbtree",
@@ -133,19 +138,19 @@ Tuning: GridSearchCV, `scoring='roc_auc'`, `TimeSeriesSplit` (n_splits=5, gap~23
 
 **XGBoost**
 
-XGBoost selected as best model: highest test-set ROC-AUC (0.9073), the primary tuning metric specified in the project proposal (GridSearchCV scoring='roc_auc'). Runner-up was AdaBoost + Random Forest (ROC-AUC=0.8945). PR-AUC (more informative than ROC-AUC under the ~6.3% test-set class imbalance) was also checked as a tie-breaker/consistency check: XGBoost=0.4353, AdaBoost + Random Forest=0.2885, AdaBoost + Decision Tree=0.2463.
+XGBoost selected as best model: highest test-set ROC-AUC (0.9079), the primary tuning metric specified in the project proposal (GridSearchCV scoring='roc_auc'). Runner-up was AdaBoost + Random Forest (ROC-AUC=0.8903). PR-AUC (more informative than ROC-AUC under the ~6.3% test-set class imbalance) was also checked as a tie-breaker/consistency check: XGBoost=0.4414, AdaBoost + Random Forest=0.2753, AdaBoost + Decision Tree=0.2440.
 
 | Metric | Value |
 |---|---|
-| ROC-AUC | 0.9073 |
-| PR-AUC (Average Precision) | 0.4353 |
-| Precision @ 0.5 | 0.2335 |
+| ROC-AUC | 0.9079 |
+| PR-AUC (Average Precision) | 0.4414 |
+| Precision @ 0.5 | 0.2302 |
 | Recall @ 0.5 | 0.9047 |
-| F1 @ 0.5 | 0.3711 |
-| Best F1 threshold | 0.8263 |
-| F1 @ best threshold | 0.4277 |
-| Brier score (calibration) | 0.1364 |
-| Confusion matrix @ 0.5 [[TN,FP],[FN,TP]] | [[23723, 5861], [188, 1785]] |
+| F1 @ 0.5 | 0.3670 |
+| Best F1 threshold | 0.8174 |
+| F1 @ best threshold | 0.4343 |
+| Brier score (calibration) | 0.1363 |
+| Confusion matrix @ 0.5 [[TN,FP],[FN,TP]] | [[23615, 5969], [188, 1785]] |
 
 Plots: `outputs/06_metrics/06_roc_curves.png`, `06_pr_curves.png`, `06_confusion_matrices.png`, `06_calibration_curves.png`, `06_feature_importance_<model>.png`.
 

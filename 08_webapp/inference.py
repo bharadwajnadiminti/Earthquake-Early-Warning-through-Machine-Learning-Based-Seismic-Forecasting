@@ -117,11 +117,24 @@ def _compute_live_features(min_events_per_cell=None, n_lookback_days=N_LOOKBACK_
     )
     asof_date = all_days[-1]
 
+    # neighbor_decay_count_hl{N}d (stage 04's spatial feature: exponentially
+    # decayed activity in a cell's 8 surrounding cells) is a CROSS-cell
+    # computation, done once outside the per-cell loop in stage 04's main()
+    # - not something compute_cell_features itself produces. Reusing stage
+    # 04's own function here (not reimplementing it) so the live dashboard
+    # can never drift from what the models were actually trained on, same
+    # principle as everything else in this module.
+    neighbor_activity = _feat_mod.compute_neighbor_decay_activity(
+        df, active_cells, all_days, _feat_mod.NEIGHBOR_DECAY_HALF_LIFE_DAYS
+    )
+    neighbor_col = f"neighbor_decay_count_hl{_feat_mod.NEIGHBOR_DECAY_HALF_LIFE_DAYS}d"
+
     rows = []
     for clat, clon in active_cells:
         g = df_active[(df_active["cell_lat_floor"] == clat) & (df_active["cell_lon_floor"] == clon)]
         mc_cell = _feat_mod.maxc_completeness_magnitude(g["mag"].values)
         feats = _feat_mod.compute_cell_features(g, all_days, mc_cell, mag_threshold)
+        feats[neighbor_col] = neighbor_activity[(clat, clon)]
         recent = feats.tail(n_lookback_days).copy()
         recent["day"] = recent.index
         recent["cell_lat"] = clat + 0.5

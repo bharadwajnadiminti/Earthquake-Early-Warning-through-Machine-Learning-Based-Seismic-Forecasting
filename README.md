@@ -140,6 +140,25 @@ Full column-by-column reference: `outputs/04_features/04_data_dictionary.csv`
 - **Energy-based:** log10 rolling radiated seismic energy (7/30/90/365d),
   via the Gutenberg-Richter energy-magnitude relation
   `log10(E_joules) = 1.5*mag + 4.8`.
+- **Recency-weighted (added later):** exponentially decayed running
+  count/energy per cell, half-lives 3d and 10d (`decay_count_hl{3,10}d`,
+  `decay_log_energy_hl{3,10}d`) — alongside the flat rolling windows
+  above, not instead of them. A fixed w-day window weighs every event in
+  it equally and drops it to exactly zero the instant it exits the
+  window, so two windows a day apart usually share almost all the same
+  events and look nearly identical; a decay feature weighs every event
+  forever, just fading out smoothly, so a recent burst shows up
+  immediately rather than being diluted across 90/365 days. `hl10d`
+  (prioritizing roughly the last month) turned out to matter a lot:
+  `decay_log_energy_hl10d` ranks feature importance **#3 of 42** for the
+  XGBoost model.
+- **Spatio-temporal (added later):** `neighbor_decay_count_hl3d` — the
+  same decay idea, but summed over a cell's 8 surrounding 1x1-degree
+  cells (Moore neighborhood), not the cell itself. `cell_lat`/`cell_lon`
+  alone only ever tell the model *where* a cell is as a static label;
+  this tells it *what's happening next door right now* — real earthquake
+  sequences cluster and migrate across neighboring territory, which a
+  model trained purely on each cell's own independent history can't see.
 - **Spatial:** cell centroid lat/lon, per-cell completeness magnitude,
   per-cell historical event count as of day *t* ("maturity" of the cell's
   seismicity record).

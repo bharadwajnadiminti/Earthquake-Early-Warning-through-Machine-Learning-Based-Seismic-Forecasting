@@ -89,9 +89,32 @@ the full, authoritative column-by-column description. Categories:
   - Energy-based:     log10 rolling radiated-seismic-energy sum (7/30/90/
                       365d), via the Gutenberg-Richter energy-magnitude
                       relation log10(E_joules) = 1.5*mag + 4.8.
+  - Recency-weighted: exponentially decayed running count/energy
+                      (DECAY_HALF_LIVES_DAYS, see decayed_cumulative_sum).
+                      Added alongside the flat rolling windows above, not
+                      instead of them: a fixed w-day window weighs every
+                      event inside it equally and drops to exactly zero
+                      weight the instant it exits the window, so two
+                      windows one day apart usually share ~(w-1)/w of the
+                      same events and look nearly identical - the model
+                      under-reacts to "something just happened". A decay
+                      feature weighs every event *forever*, just fading
+                      out smoothly, so a burst in the last few days shows
+                      up immediately and distinctly rather than being
+                      diluted equally across a 90- or 365-day average.
   - Spatial:          cell centroid (lat/lon), per-cell completeness
                       magnitude (Mc), per-cell historical event count as of
                       day t (seismicity "maturity" of the cell).
+  - Spatio-temporal:  neighbor_decay_count_hl3d - the same short-half-life
+                      decay idea, but summed over the cell's 8 surrounding
+                      1x1 degree cells (Moore neighborhood) rather than the
+                      cell itself. cell_lat/cell_lon alone only ever tell a
+                      model *where* a cell is as a static label; this
+                      feature tells it *what is currently happening next
+                      door* - real earthquake sequences cluster and
+                      migrate across neighboring territory (aftershock
+                      migration), which a model trained purely on each
+                      cell's own independent history cannot see at all.
 
 Input:  ../outputs/03_processed/03_cleaned_catalog.csv
 Output: ../outputs/04_features/04_feature_matrix.csv
@@ -119,10 +142,75 @@ B_VALUE_WINDOWS = [90, 365]
 MC_CORRECTION = 0.2            # MAXC + 0.2 (Wiemer & Wyss, 2000)
 UTSU_CORRECTION = 0.05         # half the 0.1-mag binning width (Utsu, 1965)
 
+# Recency-weighted (exponential decay) features, added alongside the flat
+# rolling windows above - see the module docstring's FEATURES section for
+# why. 3d = "prioritize the last week", 10d = "prioritize the last month"
+# (0.5**(30/10) = 0.125 weight remaining at 30 days - still meaningfully
+# decayed by then, not flat like a rolling window).
+DECAY_HALF_LIVES_DAYS = [3, 10]
+# Half-life used for the neighbor-cell spatial feature specifically: short,
+# because "is a cluster actively spreading into this cell's neighborhood
+# right now" is inherently a last-few-days question, not a last-month one.
+NEIGHBOR_DECAY_HALF_LIFE_DAYS = 3
+NEIGHBOR_OFFSETS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+
 
 def energy_joules(mag):
     # Gutenberg-Richter energy-magnitude relation (radiated seismic energy, joules)
     return 10 ** (1.5 * mag + 4.8)
+
+
+def decayed_cumulative_sum(daily_values, half_life_days):
+    """Exponentially recency-weighted running sum: decayed[t] = daily_values[t]
+    + decay_factor*decayed[t-1], decay_factor = 0.5**(1/half_life_days).
+    A day half_life_days ago retains half its original weight, one
+    2*half_life_days ago a quarter, and so on forever - unlike a rolling
+    window, no event is ever weighted exactly zero, it just fades out
+    smoothly. This is what actually makes two nearby days' snapshots look
+    meaningfully different when there's been a recent burst of activity,
+    rather than nearly identical because two long fixed windows one day
+    apart still share almost all the same events."""
+    decay_factor = 0.5 ** (1.0 / half_life_days)
+    values = np.asarray(daily_values, dtype=float)
+    decayed = np.empty(len(values))
+    running = 0.0
+    for i, v in enumerate(values):
+        running = v + decay_factor * running
+        decayed[i] = running
+    return decayed
+
+
+def compute_neighbor_decay_activity(df, active_cells, all_days, half_life_days):
+    """{(cell_lat_floor, cell_lon_floor): decayed daily count array} - for
+    each ACTIVE cell, the exponentially decayed running event count of its
+    8 surrounding 1x1 degree cells (Moore neighborhood), NOT the cell
+    itself. Computed from the FULL catalog (not just active cells) since a
+    geographically real neighbor can matter here even if it doesn't clear
+    the active-cell event threshold on its own. Counts only (no magnitude/
+    energy) - the signal that matters is "is something happening nearby
+    right now", not full per-neighbor seismicity statistics."""
+    candidate_cells = set()
+    for clat, clon in active_cells:
+        for dlat, dlon in NEIGHBOR_OFFSETS:
+            candidate_cells.add((clat + dlat, clon + dlon))
+
+    decayed_by_cell = {}
+    for (clat, clon), g in df.groupby(["cell_lat_floor", "cell_lon_floor"]):
+        if (clat, clon) not in candidate_cells:
+            continue
+        daily_count = g.groupby(g["time"].dt.floor("D")).size().reindex(all_days, fill_value=0)
+        decayed_by_cell[(clat, clon)] = decayed_cumulative_sum(daily_count.to_numpy(), half_life_days)
+
+    n_days = len(all_days)
+    result = {}
+    for clat, clon in active_cells:
+        total = np.zeros(n_days)
+        for dlat, dlon in NEIGHBOR_OFFSETS:
+            neighbor_series = decayed_by_cell.get((clat + dlat, clon + dlon))
+            if neighbor_series is not None:
+                total += neighbor_series
+        result[(clat, clon)] = total
+    return result
 
 
 def maxc_completeness_magnitude(mags):
@@ -168,6 +256,12 @@ def compute_cell_features(g, all_days, mc_cell, mag_threshold):
         out[f"rolling_mean_mag_{w}d"] = (roll_summag / roll_count.replace(0, np.nan))
         out[f"rolling_max_mag_{w}d"] = daily["max_mag"].rolling(w, min_periods=1).max()
         out[f"log_energy_{w}d"] = np.log10(roll_energy + 1.0)
+
+    for hl in DECAY_HALF_LIVES_DAYS:
+        decayed_count = decayed_cumulative_sum(daily["count"], hl)
+        decayed_energy = decayed_cumulative_sum(daily["sum_energy"], hl)
+        out[f"decay_count_hl{hl}d"] = decayed_count
+        out[f"decay_log_energy_hl{hl}d"] = np.log10(decayed_energy + 1.0)
 
     for w in B_VALUE_WINDOWS:
         roll_qcount = daily["qual_count"].rolling(w, min_periods=1).sum()
@@ -231,6 +325,10 @@ def main():
     all_days = pd.date_range(df["time"].dt.floor("D").min(), df["time"].dt.floor("D").max(), freq="D", tz="UTC")
     print(f"Daily span: {len(all_days)} days")
 
+    print(f"Computing neighbor-cell decayed activity (half-life {NEIGHBOR_DECAY_HALF_LIFE_DAYS}d, "
+          f"Moore 8-neighborhood) - uses the FULL catalog, not just active cells...")
+    neighbor_activity = compute_neighbor_decay_activity(df, active_cells, all_days, NEIGHBOR_DECAY_HALF_LIFE_DAYS)
+
     frames = []
     mc_report = {}
     for i, (clat, clon) in enumerate(active_cells):
@@ -241,6 +339,7 @@ def main():
         feats["cell_lat"] = clat + 0.5
         feats["cell_lon"] = clon + 0.5
         feats["mc_cell"] = mc_cell
+        feats[f"neighbor_decay_count_hl{NEIGHBOR_DECAY_HALF_LIFE_DAYS}d"] = neighbor_activity[(clat, clon)]
         frames.append(feats)
         if (i + 1) % 100 == 0 or (i + 1) == n_active:
             print(f"  processed {i + 1}/{n_active} active cells")
@@ -271,6 +370,9 @@ def main():
     for w in COUNT_WINDOWS:
         ordered_cols += [f"rolling_count_{w}d", f"rolling_mean_mag_{w}d",
                           f"rolling_max_mag_{w}d", f"log_energy_{w}d"]
+    for hl in DECAY_HALF_LIVES_DAYS:
+        ordered_cols += [f"decay_count_hl{hl}d", f"decay_log_energy_hl{hl}d"]
+    ordered_cols += [f"neighbor_decay_count_hl{NEIGHBOR_DECAY_HALF_LIFE_DAYS}d"]
     for w in B_VALUE_WINDOWS:
         ordered_cols += [f"b_value_{w}d", f"b_value_{w}d_n_events"]
     ordered_cols += ["doy_sin", "doy_cos", "target"]
@@ -311,6 +413,20 @@ def main():
         descriptions[f"b_value_{w}d"] = (f"Gutenberg-Richter b-value (Aki/Utsu MLE) over the trailing {w}-day window, using events >= mc_cell. "
                                           f"NaN if fewer than {MIN_EVENTS_FOR_B} qualifying events in the window (unreliable estimate).")
         descriptions[f"b_value_{w}d_n_events"] = f"Number of events >= mc_cell used in the {w}-day b-value estimate (reliability indicator for b_value_{w}d)."
+    for hl in DECAY_HALF_LIVES_DAYS:
+        descriptions[f"decay_count_hl{hl}d"] = (
+            f"Exponentially recency-weighted running event count for this cell (half-life {hl} days: an "
+            f"event this many days old retains half its weight, {2*hl} days old a quarter, decaying "
+            f"forever rather than dropping to zero outside a fixed window). Prioritizes very recent "
+            f"activity far more than the flat rolling_count windows above.")
+        descriptions[f"decay_log_energy_hl{hl}d"] = (
+            f"log10(1 + exponentially recency-weighted running radiated-energy sum, half-life {hl} days) - "
+            f"same decay idea as decay_count_hl{hl}d applied to energy instead of raw counts.")
+    descriptions[f"neighbor_decay_count_hl{NEIGHBOR_DECAY_HALF_LIFE_DAYS}d"] = (
+        f"Exponentially recency-weighted running event count (half-life {NEIGHBOR_DECAY_HALF_LIFE_DAYS} days), "
+        f"summed over this cell's 8 surrounding 1x1 degree cells (Moore neighborhood) - NOT this cell's own "
+        f"events. Captures geographic spillover (cluster/aftershock migration into neighboring territory) "
+        f"that cell_lat/cell_lon alone, used only as a static coordinate, cannot represent.")
 
     dict_rows = []
     for col in full.columns:

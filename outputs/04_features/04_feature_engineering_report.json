@@ -11,7 +11,7 @@
   "rows_dropped_warmup": 18107,
   "rows_dropped_no_label": 2604,
   "final_row_count": 209557,
-  "final_column_count": 29,
+  "final_column_count": 34,
   "target_positive_rate": 0.0583,
   "target_positive_count": 12219,
   "date_range": [

@@ -2,9 +2,9 @@
   "best_params": {
     "n_estimators": 2000,
     "max_depth": 4,
-    "learning_rate": 0.1
+    "learning_rate": 0.03
   },
-  "best_iteration": 55,
+  "best_iteration": 170,
   "fixed_params": {
     "objective": "binary:logistic",
     "booster": "gbtree",
