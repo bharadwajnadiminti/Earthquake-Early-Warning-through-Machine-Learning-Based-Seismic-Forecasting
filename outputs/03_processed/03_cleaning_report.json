@@ -4,31 +4,31 @@
   "steps": [
     {
       "step": "00_raw_loaded",
-      "rows": 233952
+      "rows": 239446
     },
     {
       "step": "01_deduped_by_id",
-      "rows": 233952
+      "rows": 239446
     },
     {
       "step": "02_dropped_missing_mag_or_magtype",
-      "rows": 233932
+      "rows": 239426
     },
     {
       "step": "02b_dropped_missing_time",
-      "rows": 233932
+      "rows": 239426
     },
     {
       "step": "03_filtered_eventtype",
-      "rows": 233932
+      "rows": 239426
     },
     {
       "step": "04_physical_bounds_filter",
-      "rows": 233932
+      "rows": 239426
     },
     {
       "step": "05_sorted_chronologically",
-      "rows": 233932
+      "rows": 239426
     }
   ],
   "removed": {
@@ -38,10 +38,10 @@
     "non_matching_eventtype": 0,
     "out_of_physical_bounds": 0
   },
-  "final_row_count": 233932,
+  "final_row_count": 239426,
   "final_date_range": [
     "2025-01-01 00:02:10.026000+00:00",
-    "2026-09-11 05:21:05.248000+00:00"
+    "2026-09-28 12:31:34.130000+00:00"
   ],
   "not_imputed_not_used_downstream": {
     "columns": [

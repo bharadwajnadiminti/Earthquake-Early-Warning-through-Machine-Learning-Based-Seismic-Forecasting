@@ -31,36 +31,41 @@ py -3.14 app.py
 ```
 
 Then open **http://127.0.0.1:5000**. First load takes ~15-20s (computing
-the last 8 days of features for all 372 active cells, reusing stage 04's
-rolling-window code); cached in memory afterward.
+today's features for all 372 active cells, reusing stage 04's rolling-
+window code, then predicting all 7 horizon days at once); cached in memory
+afterward.
 
 ## The slider
 
 The reference app's slider ("Select future date: today + N", N in 0-7)
-implied the underlying model could break its forecast down day-by-day.
-Ours can't — it predicts one probability per (cell, day) for "does an
-M&ge;4.5 event happen in the *following* 7 days", not a day-by-day split.
-Rather than fake that, the slider here is wired to real forecast
-**snapshots** from the last 8 days, chosen so the slider's own label lines
-up exactly with the *end* of the 7-day window being shown: move it to N
-and you're looking at the model's actual view (real rolling features,
-real prediction) of cumulative risk through today+N. See `app.py`'s
-docstring for the exact offset math.
+implied the underlying model could break its forecast down day-by-day. An
+earlier version of *this* project's model couldn't either — it predicted
+one probability per (cell, day) for "does an M&ge;4.5 event happen in the
+*following* 7 days" as a single fixed window, so every slider position
+showed the exact same number.
 
-One behavioral difference from the original: at slider position 0 the
-reference app showed a blank map (its own lookup table happened to have
-no row for exactly "today" at that position). Here position 0 shows a
-real forecast snapshot (today-7's), so the map is never blank.
+That's fixed at the source: stage 04 (`scripts/04_feature_engineering.py`)
+now labels every horizon_day in 1..7 separately and `horizon_day` is a real
+input feature the models were retrained on. So the slider (1-7, "days
+ahead") now asks today's live feature snapshot a genuinely different
+question at each position — P(M&ge;4.5 by tomorrow) vs. P(M&ge;4.5 by day
+7) are different, learned probabilities, not a lookup trick. Each point's
+popup also shows a magnitude readout (Gutenberg-Richter-implied "most
+likely" / "severe scenario" magnitude, conditional on an event happening —
+see `inference.py`'s `_magnitude_estimate`), not a single deterministic
+number, since a point magnitude forecast isn't something this kind of
+model can honestly produce. See `inference.py`'s module docstring for the
+full before/after.
 
 ## Files
 
-- `app.py` — Flask routes; maps the slider to a forecast snapshot and
-  builds the per-cell points sent to the page.
-- `inference.py` — loads the stage 05 model/imputer/feature-columns and
-  computes live features per active cell for the last 8 days (see its own
-  docstring for why the committed `outputs/04_features/` matrix alone
-  isn't enough — it deliberately drops the very rows a live dashboard
-  needs).
+- `app.py` — Flask routes; maps the slider (horizon_day) to a forecast and
+  builds the per-cell points (with magnitude readout) sent to the page.
+- `inference.py` — loads the stage 05 model/imputer/feature-columns,
+  computes today's live feature snapshot per active cell, expands it into
+  one row per horizon_day, and predicts each (see its own docstring for
+  why the committed `outputs/04_features/` matrix alone isn't enough — it
+  deliberately drops the very row a live dashboard needs).
 - `templates/index.html` — the page, ported from the reference app with
   Leaflet swapped in for Google Maps.
 - `static/js/risk-scale.js` — the color/radius scale for a predicted

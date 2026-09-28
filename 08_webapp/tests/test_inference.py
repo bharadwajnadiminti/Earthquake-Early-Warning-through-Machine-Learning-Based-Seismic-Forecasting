@@ -17,6 +17,7 @@ Design note: two different data sources are used deliberately.
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import inference
 
@@ -28,7 +29,6 @@ import inference
 def test_module_constants():
     assert inference.FORECAST_HORIZON_DAYS == 7
     assert inference.MAG_THRESHOLD == 4.5
-    assert inference.N_LOOKBACK_DAYS == 8
     assert inference.BEST_MODEL_KEY == "xgboost"
     assert inference.BEST_MODEL_KEY in inference.MODEL_KEYS
     assert inference.FEATURE_DISPLAY_COLS[0] == "historical_event_count"
@@ -96,7 +96,7 @@ def test_compute_live_features_explicit_threshold_includes_sparse_cell(synthetic
     assert (5.5, 5.5) in cells     # cell B: 3 events, >= explicit threshold of 2
     assert (-5.5, -5.5) not in cells  # cell C: 1 event, < explicit threshold of 2
 
-    assert "target" not in live.columns
+    assert not any(c.startswith("target_h") for c in live.columns)
     assert {"doy_sin", "doy_cos", "day", "mc_cell"} <= set(live.columns)
     assert live["doy_sin"].between(-1, 1).all()
     assert live["doy_cos"].between(-1, 1).all()
@@ -125,6 +125,48 @@ def test_compute_live_features_real_catalog_matches_warmed_cache():
 
 
 # ---------------------------------------------------------------------------
+# _expand_horizons
+# ---------------------------------------------------------------------------
+
+def test_expand_horizons_repeats_each_row_once_per_horizon_day():
+    today_df = pd.DataFrame([{"cell_lat": 1.5, "cell_lon": 2.5, "x": 10.0},
+                              {"cell_lat": 3.5, "cell_lon": 4.5, "x": 20.0}])
+    expanded = inference._expand_horizons(today_df)
+
+    assert len(expanded) == len(today_df) * inference.FORECAST_HORIZON_DAYS
+    assert set(expanded["horizon_day"].unique()) == set(range(1, inference.FORECAST_HORIZON_DAYS + 1))
+    # Every horizon_day slice has the original rows, unchanged except the new column.
+    for h in range(1, inference.FORECAST_HORIZON_DAYS + 1):
+        slice_h = expanded[expanded["horizon_day"] == h].drop(columns=["horizon_day"]).reset_index(drop=True)
+        pd.testing.assert_frame_equal(slice_h, today_df.reset_index(drop=True))
+
+
+# ---------------------------------------------------------------------------
+# _magnitude_estimate
+# ---------------------------------------------------------------------------
+
+def test_magnitude_estimate_prefers_90d_b_value_and_orders_severe_above_likely():
+    live_df = pd.DataFrame([
+        {"b_value_90d": 1.0, "b_value_365d": 0.5},   # 90d present -> used
+        {"b_value_90d": np.nan, "b_value_365d": 0.8},  # 90d NaN -> falls back to 365d
+        {"b_value_90d": np.nan, "b_value_365d": np.nan},  # both NaN -> DEFAULT_B_VALUE
+    ])
+    mag = inference._magnitude_estimate(live_df)
+
+    assert (mag["mag_severe"] >= mag["mag_likely"]).all()  # severe (10% exceedance) is always the higher magnitude
+    assert (mag["mag_likely"] >= inference.MAG_THRESHOLD).all()  # never below the threshold that conditions this
+    assert mag.notna().all().all()  # the DEFAULT_B_VALUE fallback means this is never NaN
+
+
+def test_magnitude_estimate_matches_gutenberg_richter_formula():
+    live_df = pd.DataFrame([{"b_value_90d": 1.2, "b_value_365d": np.nan}])
+    mag = inference._magnitude_estimate(live_df)
+
+    expected_likely = inference._feat_mod.magnitude_quantile(1.2, inference.MAG_THRESHOLD, 0.5)
+    assert mag["mag_likely"].iloc[0] == pytest.approx(expected_likely)
+
+
+# ---------------------------------------------------------------------------
 # _predict_all_models - fast, synthetic-row unit test of the real models
 # ---------------------------------------------------------------------------
 
@@ -149,22 +191,40 @@ def test_predict_all_models_synthetic_rows():
 # get_forecast - cache lifecycle (reuses the session-warmed cache)
 # ---------------------------------------------------------------------------
 
-def test_get_forecast_offset_clamping():
-    _, _, day_neg, _, available_days = inference.get_forecast(offset_days=-5)
-    _, _, day_zero, _, _ = inference.get_forecast(offset_days=0)
-    _, _, day_huge, _, _ = inference.get_forecast(offset_days=99999)
+def test_get_forecast_horizon_day_clamping():
+    _, asof_neg, end_neg = inference.get_forecast(horizon_day=-5)
+    _, asof_one, end_one = inference.get_forecast(horizon_day=1)
+    _, asof_huge, end_huge = inference.get_forecast(horizon_day=99999)
+    _, asof_max, end_max = inference.get_forecast(horizon_day=inference.FORECAST_HORIZON_DAYS)
 
-    assert day_neg == day_zero == available_days[0]     # negative clamps to newest
-    assert day_huge == available_days[-1]               # too-large clamps to oldest
+    assert asof_neg == asof_one == asof_max  # same today-snapshot regardless of horizon_day
+    assert end_neg == end_one                # too-small clamps to horizon_day=1
+    assert end_huge == end_max                # too-large clamps to the max horizon_day
 
 
-def test_get_forecast_returns_one_row_per_active_cell_for_selected_day():
-    day_df, asof_date, day_date, horizon_end_date, available_days = inference.get_forecast(offset_days=0)
+def test_get_forecast_returns_one_row_per_active_cell_for_selected_horizon():
+    day_df, asof_date, horizon_end_date = inference.get_forecast(horizon_day=3)
 
     assert len(day_df) == len(day_df[["cell_lat", "cell_lon"]].drop_duplicates())  # one row per cell
-    assert "day" not in day_df.columns  # dropped before returning
-    assert (horizon_end_date - day_date).days == inference.FORECAST_HORIZON_DAYS
-    assert isinstance(available_days, list) and len(available_days) == inference.N_LOOKBACK_DAYS
+    assert "horizon_day" not in day_df.columns  # dropped before returning
+    assert (horizon_end_date - asof_date).days == 3
+    assert isinstance(asof_date, pd.Timestamp)
+
+
+def test_get_forecast_different_horizons_share_the_same_snapshot_but_differ_in_output():
+    # Regression guard for the bug this was built to fix: an earlier version
+    # of the target/model only had one fixed 7-day window, so every horizon
+    # produced an identical forecast. Now horizon_day is a real input
+    # feature - the underlying snapshot (asof_date) is the same, but the
+    # predicted probabilities for horizon_day=1 vs. =7 should genuinely
+    # differ across the active-cell population.
+    day1_df, asof1, _ = inference.get_forecast(horizon_day=1)
+    day7_df, asof7, _ = inference.get_forecast(horizon_day=7)
+
+    assert asof1 == asof7  # both computed from the same today-snapshot
+    proba1 = day1_df.sort_values(["cell_lat", "cell_lon"])[f"proba_{inference.BEST_MODEL_KEY}"].to_numpy()
+    proba7 = day7_df.sort_values(["cell_lat", "cell_lon"])[f"proba_{inference.BEST_MODEL_KEY}"].to_numpy()
+    assert not np.allclose(proba1, proba7)  # NOT the same forecast replayed at every horizon
 
 
 def test_get_forecast_force_refresh_recomputes():

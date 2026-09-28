@@ -78,6 +78,7 @@
     <script>
 
       var earthquakeHorizon = {{ earthquake_horizon | tojson }};
+      var horizonDays = {{ current_value }};
       var map, pointsLayer;
 
       // colorForProb / radiusForProb now come from static/js/risk-scale.js
@@ -184,7 +185,12 @@
         // between.
         pointsLayer = L.layerGroup();
         getPoints().forEach(function (pt) {
-          var lat = pt[0], lon = pt[1], p = pt[2];
+          var lat = pt[0], lon = pt[1], p = pt[2], magLikely = pt[3], magSevere = pt[4];
+          var popupText = 'P(M4.5+ within next ' + horizonDays + ' day' + (horizonDays === 1 ? '' : 's') + ') = ' + p.toFixed(2);
+          if (magLikely != null) {
+            popupText += '<br>If triggered: ~M' + magLikely.toFixed(1) +
+              (magSevere != null ? ' (could reach M' + magSevere.toFixed(1) + ' in a severe scenario)' : '');
+          }
           L.circleMarker([lat, lon], {
             radius: radiusForProb(p),
             weight: 1,
@@ -192,7 +198,7 @@
             fillColor: colorForProb(p),
             fillOpacity: 0.85,
           })
-            .bindPopup('P(M4.5+ in next 7 days) = ' + p.toFixed(2))
+            .bindPopup(popupText)
             .bindTooltip(p.toFixed(2), { permanent: false, direction: 'top' })
             .addTo(pointsLayer);
         });
@@ -213,7 +219,7 @@
                   <form id='submit_params' method="POST" action="{{ url_for('build_page') }}">
                     <div class="slidecontainer" style='width: 100%;'>
                     <label><font color="white">Select future date: <span id="label_slider_value">{{date_horizon}}</span></font></label><BR>
-                    <input type="range" min="0" max="{{days_out_to_predict}}" value="{{current_value}}" name="slider_date_horizon"
+                    <input type="range" min="1" max="{{days_out_to_predict}}" value="{{current_value}}" name="slider_date_horizon"
                       id="slider_date_horizon" step="1" style='width: 100%;'>
                   </div>
                 </form>

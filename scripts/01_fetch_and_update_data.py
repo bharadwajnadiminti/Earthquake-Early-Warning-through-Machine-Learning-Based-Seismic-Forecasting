@@ -230,11 +230,28 @@ def main():
 
     removed = before - len(combined)
 
-    if out_path.exists():
-        backup = out_path.with_suffix(out_path.suffix + ".bak")
-        out_path.replace(backup)  # existing data is already safely loaded in memory above
-
-    combined.to_csv(out_path, index=False)
+    # Retry the rename+write with backoff: a folder synced by OneDrive (or
+    # scanned by AV) can hold a transient read lock on out_path that makes
+    # Windows' rename-based replace() fail with PermissionError even though
+    # nothing in this project still has it open. A big prior change nearby
+    # (e.g. this project's multi-megabyte outputs/) can make OneDrive's sync
+    # pass over the whole folder take a while, so this backs off longer
+    # (capped at 30s/attempt) and retries more times than the API fetch's
+    # own MAX_RETRIES before giving up.
+    WRITE_MAX_RETRIES = 8
+    for attempt in range(1, WRITE_MAX_RETRIES + 1):
+        try:
+            if out_path.exists():
+                backup = out_path.with_suffix(out_path.suffix + ".bak")
+                out_path.replace(backup)  # existing data is already safely loaded in memory above
+            combined.to_csv(out_path, index=False)
+            break
+        except PermissionError as e:
+            if attempt == WRITE_MAX_RETRIES:
+                raise
+            wait = min(2 ** attempt, 30)
+            print(f"  {out_path} locked by another process ({e}); retrying in {wait}s...", file=sys.stderr)
+            time.sleep(wait)
 
     print(f"Upserted. {removed} duplicate/superseded rows resolved.")
     print(f"Final file: {out_path} -> {len(combined)} rows, "

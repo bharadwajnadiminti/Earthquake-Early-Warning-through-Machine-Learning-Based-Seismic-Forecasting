@@ -43,10 +43,21 @@ silent)
   same reported results shape as the other two models' GridSearchCV output),
   with early stopping active inside every fold fit. The deck's max_depth=6,
   eta=0.03 are used as the center of the small grid searched around them.
-- Class imbalance: stage 04 reports an ~5.8% positive rate. `class_weight=
-  'balanced'` is set on the AdaBoost base estimators (DecisionTree/
-  RandomForest); XGBoost uses `scale_pos_weight` computed from the TRAIN
-  split's class ratio only.
+- Class imbalance: stage 04 now reports an ~3.7% positive rate averaged
+  across all horizon_day values (was ~5.8% under the old single-7-day-window
+  target; see below). `class_weight='balanced'` is set on the AdaBoost base
+  estimators (DecisionTree/RandomForest); XGBoost uses `scale_pos_weight`
+  computed from the TRAIN split's class ratio only.
+- Multi-horizon target (stage 04 change): each (cell, day) row is now
+  repeated once per horizon_day (1..7), with `horizon_day` included as an
+  ordinary feature (it's just another column in the input CSV, so no code
+  change was needed here to pick it up - `feature_cols` is derived
+  dynamically from the CSV's columns). This lets one trained model answer
+  "risk by tomorrow" and "risk by day 7" as genuinely different questions -
+  see scripts/04_feature_engineering.py's docstring for the full rationale
+  (it replaces the old fixed single-7-day-window target, which is why the
+  stage-08 dashboard's "days ahead" slider used to show the same forecast
+  at every position).
 
 --------------------------------------------------------------------------
 SPLIT / LEAKAGE CONTROL

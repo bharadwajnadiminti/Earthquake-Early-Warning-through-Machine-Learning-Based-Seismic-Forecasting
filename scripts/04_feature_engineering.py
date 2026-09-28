@@ -32,14 +32,40 @@ earthquake forecasting research:
     (b) the last FORECAST_HORIZON_DAYS days of the catalog, which have no
     complete future window to label.
 
-  Forecast horizon:
-    7 days. Chosen to match "forecast output -> early warning alert" in the
-    pipeline spec: a rolling 7-day outlook is the standard operational
-    cadence for short-term regional hazard advisories (it's long enough to
-    average out daily noise in a sparse catalog, short enough to still be
-    an "early warning"-relevant horizon rather than a long-range outlook).
+  Forecast horizon - MULTI-HORIZON, not a single fixed window:
+    Earlier versions of this script emitted exactly one label per (cell,
+    day): "does an event happen anywhere in the next 7 days". That has a
+    real problem for a *forecast dashboard*: a single 7-day-window model
+    has no way to say anything different about "risk by tomorrow" vs.
+    "risk by day 7" - there's only one number, so a "7-day-ahead slider"
+    built on top of it can only ever replay the SAME probability at every
+    position (the dashboard was doing this - see 08_webapp/inference.py's
+    history before this change).
 
-  Label:
+    This script now labels EVERY horizon_day in 1..FORECAST_HORIZON_DAYS
+    (7) for every (cell, day) row - i.e. each (cell, day) row is expanded
+    into FORECAST_HORIZON_DAYS output rows, one per horizon_day, with:
+      target(cell, day, horizon_day) = 1 if >=1 event with magnitude >=
+        MAG_THRESHOLD occurs in cell c during (day, day+horizon_day];
+        else 0.
+    `horizon_day` is then just another input feature (1..7) alongside the
+    rolling-window features. A single model trained this way can (and, per
+    stage 06's per-horizon breakdown, does) learn that near-term risk right
+    after a burst of activity is elevated relative to the far end of the
+    window - the real, physically-motivated signal is short-term aftershock
+    decay (Omori's law): a sequence that just started is likelier to produce
+    another event *soon* than a quiet cell is to suddenly produce one on
+    exactly day 7. That is precisely the day-to-day variation a fixed
+    single-window model structurally cannot express.
+
+    7 remains the max horizon for the reasons below (matches "forecast
+    output -> early warning alert" in the pipeline spec: a rolling 7-day
+    outlook is the standard operational cadence for short-term regional
+    hazard advisories - long enough to average out daily noise in a sparse
+    catalog, short enough to stay "early warning"-relevant).
+
+  Label (single-horizon_day slice, e.g. horizon_day=7 - equivalent to the
+  original single-window label):
     For (cell c, day t): y=1 if >=1 event with magnitude >= MAG_THRESHOLD
     occurs in cell c during (t, t+7] (strictly after t - no leakage: features
     at day t use only information available by the end of day t). y=0
@@ -116,6 +142,23 @@ the full, authoritative column-by-column description. Categories:
                       migration), which a model trained purely on each
                       cell's own independent history cannot see at all.
 
+--------------------------------------------------------------------------
+MAGNITUDE ESTIMATE (given that a forecasted event occurs)
+--------------------------------------------------------------------------
+The classifier above only ever answers "will a significant (>=MAG_THRESHOLD)
+event happen" - it is not a magnitude regressor, and a single deterministic
+magnitude number ("it will be M5.3") is not something any short-term
+forecasting method can honestly produce. What IS well-founded is the
+conditional magnitude *distribution* of such an event, given the
+Gutenberg-Richter law each cell's b_value_{90,365}d features already
+estimate: for magnitudes m >= MAG_THRESHOLD,
+    P(M >= m | an event with M >= MAG_THRESHOLD occurs) = 10 ** (-b * (m - MAG_THRESHOLD))
+`magnitude_exceedance_prob` computes this; `magnitude_quantile` inverts it
+(given a probability, what magnitude has exactly that much chance of being
+exceeded) so a consumer can report e.g. "most likely ~M4.8, could reach
+M6.1 in a 1-in-10 scenario" instead of a single point value. Used by
+08_webapp/inference.py for the dashboard's per-cell magnitude readout.
+
 Input:  ../outputs/03_processed/03_cleaned_catalog.csv
 Output: ../outputs/04_features/04_feature_matrix.csv
         ../outputs/04_features/04_data_dictionary.csv
@@ -141,6 +184,8 @@ COUNT_WINDOWS = [7, 30, 90, 365]
 B_VALUE_WINDOWS = [90, 365]
 MC_CORRECTION = 0.2            # MAXC + 0.2 (Wiemer & Wyss, 2000)
 UTSU_CORRECTION = 0.05         # half the 0.1-mag binning width (Utsu, 1965)
+DEFAULT_B_VALUE = 1.0          # global Gutenberg-Richter average, used as a fallback when a
+                                # cell's own b_value_{90,365}d is NaN (too few qualifying events)
 
 # Recency-weighted (exponential decay) features, added alongside the flat
 # rolling windows above - see the module docstring's FEATURES section for
@@ -213,6 +258,19 @@ def compute_neighbor_decay_activity(df, active_cells, all_days, half_life_days):
     return result
 
 
+def magnitude_exceedance_prob(b_value, base_mag, m):
+    """Gutenberg-Richter conditional exceedance probability: P(M >= m | an
+    event with M >= base_mag occurs), for m >= base_mag. b_value and m may
+    be arrays (broadcasts elementwise)."""
+    return 10.0 ** (-np.asarray(b_value) * (np.asarray(m) - base_mag))
+
+
+def magnitude_quantile(b_value, base_mag, exceed_prob):
+    """Inverse of magnitude_exceedance_prob: the magnitude m for which
+    P(M >= m | event) == exceed_prob exactly (0 < exceed_prob <= 1)."""
+    return base_mag - np.log10(np.asarray(exceed_prob)) / np.asarray(b_value)
+
+
 def maxc_completeness_magnitude(mags):
     """Maximum-curvature estimate of the completeness magnitude Mc for one cell,
     computed once from its full history (Wiemer & Wyss, 2000), + the standard
@@ -281,8 +339,15 @@ def compute_cell_features(g, all_days, mc_cell, mag_threshold):
     # historical event count as of day t (expanding, inclusive) -> cell "maturity"
     out["historical_event_count"] = daily["count"].expanding().sum()
 
-    out["target"] = daily["sig_count"].rolling(FORECAST_HORIZON_DAYS, min_periods=FORECAST_HORIZON_DAYS) \
-        .sum().shift(-FORECAST_HORIZON_DAYS)
+    # Multi-horizon labels: target_h{d} = 1 if >=1 significant event occurs
+    # during (day, day+d], for every d in 1..FORECAST_HORIZON_DAYS - see the
+    # module docstring's "Forecast horizon" section for why (this replaces
+    # emitting a single fixed-window target). NaN (via min_periods=d) where
+    # fewer than d future days remain in the catalog for that row; dropped
+    # in main() based on the longest horizon, same as the single-window
+    # version was.
+    for d in range(1, FORECAST_HORIZON_DAYS + 1):
+        out[f"target_h{d}"] = daily["sig_count"].rolling(d, min_periods=d).sum().shift(-d)
 
     return out
 
@@ -352,20 +417,34 @@ def main():
     full = full[full["historical_event_count"] >= WARMUP_MIN_EVENTS]
     dropped_warmup = before - len(full)
 
+    # Drop based on the LONGEST horizon's label (target_h{FORECAST_HORIZON_DAYS}):
+    # if that one is non-NaN, every shorter horizon's label is guaranteed
+    # non-NaN too (it needs fewer future days), so this is exactly as
+    # restrictive as the old single-window dropna and drops the same rows.
+    target_cols = [f"target_h{d}" for d in range(1, FORECAST_HORIZON_DAYS + 1)]
     before = len(full)
-    full = full.dropna(subset=["target"])
+    full = full.dropna(subset=[f"target_h{FORECAST_HORIZON_DAYS}"])
     dropped_no_label = before - len(full)
-
-    full["target"] = (full["target"] > 0).astype(int)
 
     full["day_of_year"] = full["day"].dt.dayofyear
     full["doy_sin"] = np.sin(2 * np.pi * full["day_of_year"] / 365.25)
     full["doy_cos"] = np.cos(2 * np.pi * full["day_of_year"] / 365.25)
     full = full.drop(columns=["day_of_year"])
 
-    full = full.sort_values(["day", "cell_lat", "cell_lon"]).reset_index(drop=True)
+    # Expand each (cell, day) row into FORECAST_HORIZON_DAYS rows, one per
+    # horizon_day - see module docstring's "Forecast horizon" section. This
+    # is what lets a single trained model be asked "risk by tomorrow?" and
+    # "risk by day 7?" as two genuinely different questions instead of only
+    # ever having one fixed-window answer.
+    id_cols = [c for c in full.columns if c not in target_cols]
+    full = full.melt(id_vars=id_cols, value_vars=target_cols,
+                      var_name="horizon_day", value_name="target")
+    full["horizon_day"] = full["horizon_day"].str.replace("target_h", "", regex=False).astype(int)
+    full["target"] = (full["target"] > 0).astype(int)
 
-    ordered_cols = ["day", "cell_lat", "cell_lon", "mc_cell", "historical_event_count",
+    full = full.sort_values(["day", "horizon_day", "cell_lat", "cell_lon"]).reset_index(drop=True)
+
+    ordered_cols = ["day", "horizon_day", "cell_lat", "cell_lon", "mc_cell", "historical_event_count",
                     "days_since_last_event"]
     for w in COUNT_WINDOWS:
         ordered_cols += [f"rolling_count_{w}d", f"rolling_mean_mag_{w}d",
@@ -379,11 +458,15 @@ def main():
     full = full[ordered_cols]
 
     pos_rate = full["target"].mean()
-    print(f"\nFeature matrix: {len(full):,} rows x {len(full.columns)} columns")
+    pos_rate_by_horizon = full.groupby("horizon_day")["target"].mean().round(4).to_dict()
+    print(f"\nFeature matrix: {len(full):,} rows x {len(full.columns)} columns "
+          f"({FORECAST_HORIZON_DAYS} horizon_day rows per (cell, day))")
     print(f"Dropped {dropped_warmup:,} rows in per-cell warm-up (< {WARMUP_MIN_EVENTS} prior events)")
-    print(f"Dropped {dropped_no_label:,} rows with no complete {FORECAST_HORIZON_DAYS}-day future window")
-    print(f"Target positive rate (M>={args.mag_threshold}+ event in next {FORECAST_HORIZON_DAYS}d): {pos_rate:.4f} "
-          f"({int(full['target'].sum()):,} positive / {len(full):,} total)")
+    print(f"Dropped {dropped_no_label:,} (cell, day) rows with no complete {FORECAST_HORIZON_DAYS}-day future window")
+    print(f"Target positive rate (M>={args.mag_threshold}+ event by horizon_day, averaged over all horizons): "
+          f"{pos_rate:.4f} ({int(full['target'].sum()):,} positive / {len(full):,} total)")
+    print(f"Positive rate BY horizon_day (should increase with horizon_day - longer window, more chances): "
+          f"{pos_rate_by_horizon}")
 
     nan_report = full.isna().mean().sort_values(ascending=False)
     print("\nNaN rate per column (b-values are NaN where the cell has too few qualifying events):")
@@ -395,6 +478,11 @@ def main():
     # --- data dictionary -----------------------------------------------------
     descriptions = {
         "day": "Forecast origin date (UTC midnight). Features use data through end of this day; target looks forward.",
+        "horizon_day": (
+            f"Forecast horizon in days, 1..{FORECAST_HORIZON_DAYS}. Each (cell, day) origin row is repeated "
+            f"once per horizon_day so a single model can be asked about different lookout windows "
+            f"(risk by tomorrow vs. risk by day {FORECAST_HORIZON_DAYS}) instead of only ever answering one "
+            f"fixed-length window. Treated as an ordinary numeric input feature by stage 05."),
         "cell_lat": f"Latitude of the {GRID_SIZE_DEG} deg grid cell centroid.",
         "cell_lon": f"Longitude of the {GRID_SIZE_DEG} deg grid cell centroid.",
         "mc_cell": "Per-cell magnitude of completeness (MAXC + 0.2 correction), static, computed from full cell history.",
@@ -402,7 +490,7 @@ def main():
         "days_since_last_event": "Days since the most recent event in this cell, as of day t (inter-event-time proxy).",
         "doy_sin": "sin(2*pi*day_of_year/365.25) - cyclical seasonal encoding.",
         "doy_cos": "cos(2*pi*day_of_year/365.25) - cyclical seasonal encoding.",
-        "target": f"1 if >=1 event with magnitude >= {args.mag_threshold} occurs in this cell during (day t, day t+{FORECAST_HORIZON_DAYS}]; else 0.",
+        "target": f"1 if >=1 event with magnitude >= {args.mag_threshold} occurs in this cell during (day t, day t+horizon_day]; else 0.",
     }
     for w in COUNT_WINDOWS:
         descriptions[f"rolling_count_{w}d"] = f"Count of events in this cell in the trailing {w}-day window ending on day t (inclusive) - seismicity rate."
@@ -455,6 +543,7 @@ def main():
         "final_row_count": int(len(full)),
         "final_column_count": int(len(full.columns)),
         "target_positive_rate": round(float(pos_rate), 4),
+        "target_positive_rate_by_horizon_day": {int(k): float(v) for k, v in pos_rate_by_horizon.items()},
         "target_positive_count": int(full["target"].sum()),
         "date_range": [str(full["day"].min()), str(full["day"].max())],
     }

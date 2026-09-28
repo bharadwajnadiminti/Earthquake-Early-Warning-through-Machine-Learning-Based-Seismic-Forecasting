@@ -52,6 +52,9 @@ def main():
     best_model_report = load_json(metrics_dir / "06_best_model.json")
     comp_df = pd.DataFrame(best_model_report["comparison_table"]).sort_values("roc_auc", ascending=False)
 
+    horizon_metrics_path = metrics_dir / "06_metrics_by_horizon.csv"
+    horizon_df = pd.read_csv(horizon_metrics_path) if horizon_metrics_path.exists() else None
+
     best_params = {}
     for key, fname in [
         ("AdaBoost + Decision Tree", "05_adaboost_dt_best_params.json"),
@@ -80,29 +83,45 @@ def main():
         f"of all catalog events.\n"
     )
     lines.append(
-        f"For every active cell *c* and day *t*: **y=1** if at least one event with "
-        f"magnitude >= **{feat_report['mag_threshold']}** occurs in cell *c* during "
-        f"**(t, t+{feat_report['forecast_horizon_days']}]** days (strictly after t — features use "
-        f"only information available through end of day t); **y=0** otherwise.\n"
+        f"**Multi-horizon target:** for every active cell *c*, day *t*, and horizon_day *h* in "
+        f"1..{feat_report['forecast_horizon_days']}: **y=1** if at least one event with magnitude >= "
+        f"**{feat_report['mag_threshold']}** occurs in cell *c* during **(t, t+h]** days (strictly after "
+        f"t — features use only information available through end of day t); **y=0** otherwise. Each "
+        f"(cell, day) row is expanded into {feat_report['forecast_horizon_days']} output rows (one per "
+        f"horizon_day), with `horizon_day` itself included as an ordinary input feature. This lets one "
+        f"trained model answer \"risk by tomorrow\" and \"risk by day {feat_report['forecast_horizon_days']}\" "
+        f"as genuinely different questions — an earlier version of this project used a single fixed "
+        f"{feat_report['forecast_horizon_days']}-day window only, which meant a day-by-day forecast "
+        f"dashboard could only ever show one repeated number. See §4b below for evidence this was fixed.\n"
     )
     lines.append(
         f"**Magnitude threshold justification:** M{feat_report['mag_threshold']} is the standard "
         f"\"moderately damaging / broadly felt\" cutoff used in operational seismology and short-term "
         f"forecasting studies. It was also chosen for statistical power: at this catalog's size and "
-        f"span, M4.5+ yields a workable ~{fmt_pct(feat_report['target_positive_rate'])} positive rate "
-        f"at (cell, day) granularity, versus M5.0+ which would push the positive rate into the low "
-        f"single digits and leave too few positive examples per cross-validation fold.\n"
+        f"span, M4.5+ yields a workable ~{fmt_pct(feat_report['target_positive_rate_by_horizon_day'][str(feat_report['forecast_horizon_days'])])} "
+        f"positive rate at (cell, day) granularity for the full {feat_report['forecast_horizon_days']}-day "
+        f"horizon, versus M5.0+ which would push the positive rate into the low single digits and leave "
+        f"too few positive examples per cross-validation fold.\n"
     )
     lines.append(
         f"**Warm-up:** a cell's rows only start once it has accumulated >= {feat_report['warmup_min_events']} "
         f"historical events (insufficient history before that to compute meaningful rolling features).\n"
     )
     lines.append(
-        f"- Final feature matrix: **{feat_report['final_row_count']:,}** (cell, day) rows, "
-        f"**{feat_report['target_positive_count']:,}** positive ({fmt_pct(feat_report['target_positive_rate'])}).\n"
+        f"- Final feature matrix: **{feat_report['final_row_count']:,}** (cell, day, horizon_day) rows "
+        f"({feat_report['forecast_horizon_days']} horizon_day rows per (cell, day)), "
+        f"**{feat_report['target_positive_count']:,}** positive "
+        f"({fmt_pct(feat_report['target_positive_rate'])} averaged across all horizons).\n"
         f"- Date range: {feat_report['date_range'][0]} -> {feat_report['date_range'][1]}\n"
         f"- Rows dropped in per-cell warm-up: {feat_report['rows_dropped_warmup']:,}\n"
-        f"- Rows dropped (no complete future label window): {feat_report['rows_dropped_no_label']:,}\n"
+        f"- (cell, day) rows dropped (no complete {feat_report['forecast_horizon_days']}-day future window): "
+        f"{feat_report['rows_dropped_no_label']:,}\n"
+        f"- **Positive rate by horizon_day** (rises with horizon_day - a longer window gives more chances "
+        f"for an event, and is the reason a single model trained on this can tell \"risk by tomorrow\" "
+        f"apart from \"risk by day {feat_report['forecast_horizon_days']}\"): "
+        + ", ".join(f"day {h}: {fmt_pct(r)}" for h, r in
+                    sorted(feat_report['target_positive_rate_by_horizon_day'].items(), key=lambda kv: int(kv[0])))
+        + "\n"
     )
     lines.append(
         "**Note on formulation:** this is one reasonable, standard choice — not the only one. "
@@ -157,6 +176,20 @@ def main():
         lines.append(json.dumps(params, indent=2))
         lines.append("```\n")
 
+    # --- 4b. Per-horizon breakdown (evidence the day-by-day fix works) --------
+    if horizon_df is not None:
+        lines.append("## 4b. Risk by Forecast Horizon (Test Set)\n")
+        lines.append(
+            "Direct evidence that the multi-horizon target (Section 1) actually gives day-by-day "
+            "variation instead of one repeated number: mean predicted P(event by horizon_day) for each "
+            "model, split out by horizon_day. It should climb monotonically with horizon_day (a longer "
+            "window gives more chances for an event) and differ visibly between horizon_day=1 and "
+            "horizon_day=7 — the two things a single-fixed-window model could never do.\n"
+        )
+        lines.append(horizon_df.round(4).to_markdown(index=False))
+        lines.append("")
+        lines.append("Plot: `outputs/06_metrics/06_risk_by_horizon.png`.\n")
+
     # --- 5. Best model --------------------------------------------------------
     lines.append("## 5. Best Model\n")
     lines.append(f"**{best_model_report['best_model']}**\n")
@@ -182,13 +215,16 @@ def main():
     lines.append(
         "`08_webapp/` implements the proposal's last two pipeline steps - "
         "**forecast output -> early warning alert** - as a local interactive "
-        "dashboard: a live risk map (switchable across all three models above), "
-        "an adjustable-threshold early-warning banner, a top-risk table, this "
-        "same model comparison panel, and a recent-actual-earthquakes overlay "
-        "for ground-truth context. It reuses `scripts/04_feature_engineering.py`'s "
-        "own functions to compute each active cell's current feature row (the "
-        "one row the training matrix above deliberately omits, since its label "
-        "isn't knowable yet), so it can never compute a feature differently than "
+        "dashboard: a live risk map with a \"days ahead\" slider (1-7) that now "
+        "shows a genuinely different, model-predicted probability at each "
+        "position (see Section 4b - this required the multi-horizon target "
+        "change in Section 1; an earlier version showed one repeated number at "
+        "every slider position), plus a per-cell Gutenberg-Richter magnitude "
+        "readout (most-likely / severe-scenario, not a single deterministic "
+        "value). It reuses `scripts/04_feature_engineering.py`'s own functions "
+        "to compute each active cell's current feature row (the one row the "
+        "training matrix above deliberately omits, since its label isn't "
+        "knowable yet), so it can never compute a feature differently than "
         "the models were trained on. Run with `python 08_webapp/app.py` -> "
         "http://127.0.0.1:5000 (no external API key required). "
         "See `08_webapp/README.md` for the full feature list.\n"

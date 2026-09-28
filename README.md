@@ -86,9 +86,26 @@ binary formulation**, defined and justified in full in
   including them would balloon the sample count ~60x for a trivial
   always-zero label.
 - **Temporal resolution:** daily, per active cell.
-- **Forecast horizon:** 7 days.
-- **Label:** for (cell *c*, day *t*), **y=1** if >=1 event with magnitude
-  >= **4.5** occurs in cell *c* during (*t*, *t*+7] days; else **y=0**.
+- **Forecast horizon: multi-horizon, 1-7 days.** Each (cell, day) row is
+  labeled once per horizon_day *h* in 1..7 and expanded into 7 output
+  rows, with `horizon_day` itself included as an input feature. **Label:**
+  for (cell *c*, day *t*, horizon_day *h*), **y=1** if >=1 event with
+  magnitude >= **4.5** occurs in cell *c* during (*t*, *t*+*h*] days; else
+  **y=0**. (An earlier version of this project used a single fixed 7-day
+  window only — this meant a trained model could produce exactly one
+  probability per cell no matter which day of the week you asked about,
+  so the stage 08 dashboard's "days ahead" slider showed the same
+  forecast at every position. Making `horizon_day` a real feature the
+  model is trained on fixes that — see `08_webapp/README.md`'s "The
+  slider" section and stage 06's `06_metrics_by_horizon.csv`/
+  `06_risk_by_horizon.png` for evidence it actually varies now.)
+- **Magnitude readout (not a point prediction):** the classifier only
+  answers "will a significant event happen" — given that it does, the
+  likely magnitude follows the Gutenberg-Richter law from each cell's own
+  b-value (`magnitude_exceedance_prob`/`magnitude_quantile` in stage 04).
+  The dashboard reports a "most likely" and "severe scenario" magnitude
+  range, not a single deterministic number, since a point forecast isn't
+  something this class of model can honestly produce.
 - **Magnitude threshold (M4.5):** standard "moderately damaging / broadly
   felt" cutoff in operational seismology, and empirically the better choice
   for this catalog's size: M4.5+ gives 13,857 events (5.9% of the catalog)
@@ -203,9 +220,12 @@ compatibility/compute notes documented in `05_train_models.py`'s docstring:
    functionally equivalent to `GridSearchCV`, just hand-rolled to keep early
    stopping working.)*
 
-Class imbalance (~5.8% positive): `class_weight='balanced'` on the AdaBoost
-base estimators; XGBoost uses `scale_pos_weight` from the train split's
-class ratio.
+Class imbalance (~3.7% positive, averaged across all horizon_day values -
+this ranges from ~1.3% at horizon_day=1 to ~5.8% at horizon_day=7, since a
+longer window gives more chances for an event; see stage 04's report for
+the exact breakdown): `class_weight='balanced'` on the AdaBoost base
+estimators; XGBoost uses `scale_pos_weight` from the train split's class
+ratio.
 
 All random seeds are fixed to **42** throughout (numpy, scikit-learn,
 XGBoost, the train/val/test split is otherwise deterministic by date).
@@ -243,6 +263,15 @@ day-by-day breakdown) and how to run it.
 
 ## Known limitations (worth citing in a viva)
 
+- **No true point prediction of location/magnitude/exact day is possible,
+  by any method.** This is not specific to this project's models — it's
+  the scientific consensus in seismology (USGS's own public position):
+  short-term earthquake occurrence is not deterministically predictable.
+  What this pipeline delivers, honestly, is *probabilistic hazard
+  forecasting* (P(event) per grid cell per horizon_day, plus a
+  Gutenberg-Richter magnitude distribution conditional on an event
+  happening) — not "an M5.3 will strike here on day 4". Framing the
+  deliverable this way is the correct and defensible position in a viva.
 - **Short catalog window (~20 months).** All three models' generalization
   claims are bounded by this — a single unusual sequence (a large
   mainshock/aftershock swarm) can dominate a fold. TimeSeriesSplit with a

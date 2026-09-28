@@ -22,6 +22,8 @@ Output: ../outputs/06_metrics/06_evaluation_metrics.json
         ../outputs/06_metrics/06_calibration_curves.png
         ../outputs/06_metrics/06_feature_importance_<model>.png
         ../outputs/06_metrics/06_best_model.json
+        ../outputs/06_metrics/06_metrics_by_horizon.csv   (per-horizon_day roc_auc/pr_auc/mean predicted risk)
+        ../outputs/06_metrics/06_risk_by_horizon.png      (mean predicted risk vs. horizon_day, all 3 models)
 """
 
 import argparse
@@ -107,6 +109,7 @@ def main():
 
     results = {}
     roc_data, pr_data, cal_data = {}, {}, {}
+    proba_by_model = {}
 
     for name, fname in MODEL_FILES.items():
         path = models_dir / fname
@@ -115,6 +118,7 @@ def main():
             continue
         model = joblib.load(path)
         proba = model.predict_proba(Xte)[:, 1]
+        proba_by_model[name] = proba
         pred_05 = (proba >= 0.5).astype(int)
 
         fpr, tpr, _ = roc_curve(yte, proba)
@@ -216,6 +220,50 @@ def main():
         json.dump(best_model_report, f, indent=2)
     print(f"\nBest model: {best_name}")
     print(justification)
+
+    # --- per-horizon-day breakdown ----------------------------------------------
+    # Direct evidence that the multi-horizon target (stage 04) actually fixed
+    # the "forecast looks the same at every day-ahead" problem: if it worked,
+    # mean predicted risk should climb monotonically with horizon_day (longer
+    # window = more chances for an event), and should differ visibly between
+    # e.g. horizon_day=1 and horizon_day=7 rather than being flat.
+    if "horizon_day" in test.columns:
+        horizon_vals = test["horizon_day"].to_numpy()
+        horizon_rows = []
+        for name, proba in proba_by_model.items():
+            for h in sorted(np.unique(horizon_vals)):
+                mask = horizon_vals == h
+                y_h, p_h = yte[mask], proba[mask]
+                row = {
+                    "model": name, "horizon_day": int(h), "n": int(mask.sum()),
+                    "positive_rate": float(y_h.mean()), "mean_predicted_proba": float(p_h.mean()),
+                    "roc_auc": float(roc_auc_score(y_h, p_h)) if len(np.unique(y_h)) > 1 else None,
+                    "pr_auc": float(average_precision_score(y_h, p_h)) if len(np.unique(y_h)) > 1 else None,
+                }
+                horizon_rows.append(row)
+        horizon_df = pd.DataFrame(horizon_rows)
+        horizon_df.to_csv(outdir / "06_metrics_by_horizon.csv", index=False)
+        print("\n=== Per-horizon-day breakdown (evidence the horizon signal is genuinely learned) ===")
+        print(horizon_df.to_string(index=False))
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        for name in MODEL_FILES:
+            sub = horizon_df[horizon_df["model"] == name]
+            if len(sub):
+                ax.plot(sub["horizon_day"], sub["mean_predicted_proba"], marker="o", label=name,
+                        color=COLORS.get(name))
+        ax.set_xlabel("Forecast horizon (days ahead)")
+        ax.set_ylabel("Mean predicted P(event by this horizon) — test set")
+        ax.set_title("Predicted risk vs. forecast horizon\n(rising, non-flat curve = day-by-day variation works)")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(outdir / "06_risk_by_horizon.png", dpi=150)
+        plt.close(fig)
+        print(f"Per-horizon breakdown written to: {outdir / '06_metrics_by_horizon.csv'}, "
+              f"{outdir / '06_risk_by_horizon.png'}")
+    else:
+        print("\n(no 'horizon_day' column in the feature matrix - skipping per-horizon breakdown; "
+              "re-run stage 04 to regenerate the multi-horizon feature matrix.)")
 
     # --- plots ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(7, 6))

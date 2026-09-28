@@ -4,7 +4,7 @@ app.py
 
 Stage 08: forecast dashboard. UI/interaction is the reference app's own
 (temp/EarthquakeForecasting/Webapp) - title bar, single world map, one
-"select future date" slider, 0-7 days out - kept as close to the original
+"select future date" slider, 1-7 days out - kept as close to the original
 as possible (see templates/index.html). The DATA PULLING AND MODEL
 BUILDING behind it is this project's own verified pipeline, not the
 reference app's from-scratch-every-restart approach: see inference.py,
@@ -14,16 +14,17 @@ loads the actual GridSearchCV-tuned model saved by stage 05
 rather than retraining a fresh, unevaluated, untuned model blind on every
 restart against only the last rolling month of all-magnitude data.
 
-Slider semantics: the model predicts one probability per (cell, day) for
-"does an M>=4.5 event happen in the *following* 7 days" - it does not
-decompose that window into a day-by-day breakdown the way the reference
-app's slider implied. So instead of a lookup hack, the slider here scrubs
-through real forecast *snapshots* from the last 8 days, chosen so the
-slider's own label ("Select future date: today + N") lines up exactly
-with the *end* of the 7-day window being shown - move the slider to N and
-you're looking at the model's actual view of cumulative risk through
-that date, computed from that snapshot's real rolling features, not a
-fabricated per-day split.
+Slider semantics: the model predicts P(M>=4.5 event by day N) directly for
+N = 1..7 - `horizon_day` is a real input feature the models were retrained
+on (scripts/04_feature_engineering.py), so moving the slider asks the SAME
+today-snapshot a genuinely different question at each position ("risk by
+tomorrow" vs. "risk by day 7"), rather than replaying one fixed-window
+number (an earlier version of this project's target only had one 7-day
+window total, so every slider position looked identical - see
+inference.py's module docstring for the fix). Each point's popup also shows
+a Gutenberg-Richter magnitude readout (most-likely / severe-scenario), not
+a single deterministic magnitude - see inference.py's `_magnitude_estimate`
+for why a point value would be dishonest here.
 
 No external API key required (Leaflet + Esri tiles, not the Google Maps JS
 API the original had a key hardcoded for - tested that exact original code,
@@ -40,8 +41,6 @@ Run locally:
     -> http://127.0.0.1:5000
 """
 
-from datetime import datetime, timedelta
-
 from flask import Flask, render_template, request
 
 import inference
@@ -51,39 +50,41 @@ app = Flask(__name__)
 PROB_THRESHOLD = 0.3  # same cutoff the reference app used to decide what to show
 
 
-def get_earth_quake_estimates(horizon_int):
-    """Slider value (0-7, "days from today") -> Leaflet.heat [lat, lon, weight]
-    points for the best model's (XGBoost) predicted probability, from the
-    forecast snapshot whose 7-day horizon ends exactly on today+horizon_int
-    (see module docstring)."""
-    offset_days = inference.N_LOOKBACK_DAYS - 1 - horizon_int
-    day_df, _, day_date, horizon_end_date, _ = inference.get_forecast(offset_days=offset_days)
+def get_earth_quake_estimates(horizon_day):
+    """Slider value (1-7, "days ahead") -> Leaflet points
+    [lat, lon, proba, mag_likely, mag_severe] for the best model's
+    (XGBoost) predicted P(M>=4.5 by this horizon_day), from today's live
+    feature snapshot (see module + inference.py docstrings)."""
+    day_df, asof_date, horizon_end_date = inference.get_forecast(horizon_day=horizon_day)
 
     points = []
     for row in day_df.to_dict(orient="records"):
         p = row.get(f"proba_{inference.BEST_MODEL_KEY}")
         if p is not None and p > PROB_THRESHOLD:
-            points.append([row["cell_lat"], row["cell_lon"], float(p)])
-    return points, day_date, horizon_end_date
+            points.append([
+                row["cell_lat"], row["cell_lon"], float(p),
+                row.get("mag_likely"), row.get("mag_severe"),
+            ])
+    return points, asof_date, horizon_end_date
 
 
 @app.route("/", methods=['POST', 'GET'])
 def build_page():
-    horizon_int = int(request.form.get('slider_date_horizon', 0)) if request.method == 'POST' else 0
-    points, day_date, horizon_end_date = get_earth_quake_estimates(horizon_int)
-    horizon_date = datetime.today() + timedelta(days=horizon_int)
+    horizon_day = int(request.form.get('slider_date_horizon', 1)) if request.method == 'POST' else 1
+    horizon_day = max(1, min(horizon_day, inference.FORECAST_HORIZON_DAYS))
+    points, asof_date, horizon_end_date = get_earth_quake_estimates(horizon_day)
 
     return render_template(
         'index.html',
-        date_horizon=horizon_date.strftime('%m/%d/%Y'),
+        date_horizon=horizon_end_date.strftime('%m/%d/%Y'),
         earthquake_horizon=points,
-        current_value=horizon_int,
-        days_out_to_predict=inference.N_LOOKBACK_DAYS - 1,
+        current_value=horizon_day,
+        days_out_to_predict=inference.FORECAST_HORIZON_DAYS,
     )
 
 
 if __name__ == "__main__":
-    print("Precomputing the last week's forecast snapshots from the trained pipeline "
+    print("Precomputing today's forecast for all 7 horizon days from the trained pipeline "
           "(first load can take ~20s)...")
     inference.get_forecast()
     print("Ready. Starting Flask dev server on http://127.0.0.1:5000")

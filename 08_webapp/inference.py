@@ -12,23 +12,37 @@ drift from what the models were actually trained on.
 
 Why this is needed at all: stage 04's own committed
 outputs/04_features/04_feature_matrix.csv deliberately DROPS the most
-recent FORECAST_HORIZON_DAYS-1 rows per cell (`dropna(subset=["target"])`)
-because their target label isn't knowable yet — that's correct for
-*training* data, but it means the matrix has no row for "today", which is
-exactly the row a live forecast dashboard needs. This module recomputes
-the last N_LOOKBACK_DAYS rows per active cell (reusing the same
-rolling-window code), without ever touching the target column.
+recent FORECAST_HORIZON_DAYS-1 rows per cell (`dropna(subset=["target_h7"])`
+before the multi-horizon melt) because their target label isn't knowable
+yet — that's correct for *training* data, but it means the matrix has no
+row for "today", which is exactly the row a live forecast dashboard needs.
+This module recomputes today's feature row per active cell (reusing the
+same rolling-window code), without ever touching the target column.
 
-Note on the "day slider" in the UI: the model predicts a single
-probability per (cell, day) for "does an M>=MAG_THRESHOLD event happen
-in the *following* FORECAST_HORIZON_DAYS days" — it does NOT decompose
-that window into a day-by-day breakdown, so the slider does not pretend
-to show "risk on day 3 of 7" the way the old reference app's did. Instead
-it lets you scrub through the last few days' forecast *snapshots*: "as of
-this day, here's the model's view of the following 7 days" - a legitimate
-and still genuinely dynamic feature (each snapshot uses that day's actual
-rolling feature values), just honestly scoped to what the model can
-actually say.
+Note on the "day slider" in the UI (fixed - read this if you're wondering
+why this looks different from an older version): stage 04 used to label
+each (cell, day) with a single fixed "does an event happen in the next 7
+days" target, which meant a model trained on it could only ever produce
+ONE probability per cell, no matter which day of the 7-day window you
+asked about — moving the old slider just replayed the same number at
+every position. Stage 04 now labels every horizon_day in 1..
+FORECAST_HORIZON_DAYS separately (see its docstring), and `horizon_day` is
+an input feature the models were retrained on. So this module computes
+ONE feature snapshot for today (`_compute_live_features`), then expands it
+into FORECAST_HORIZON_DAYS rows per cell — one per horizon_day
+(`_expand_horizons`) — and predicts each separately. The slider now
+directly selects horizon_day, and the numbers it shows are genuinely
+different per position because the model was trained to treat "risk by
+tomorrow" and "risk by day 7" as different questions.
+
+Magnitude readout: the classifier only ever answers "will a
+>=MAG_THRESHOLD event happen" — a single deterministic magnitude number
+isn't something a short-term forecasting model can honestly produce.
+`_magnitude_estimate` instead reports the Gutenberg-Richter-implied
+magnitude distribution *conditional on* such an event occurring (using
+scripts/04_feature_engineering.py's `magnitude_exceedance_prob` /
+`magnitude_quantile` and each cell's own b-value) — a most-likely magnitude
+and a "could reach this in a severe scenario" figure, not a point forecast.
 
 Input:  ../outputs/03_processed/03_cleaned_catalog.csv (stage 03 output)
         ../outputs/05_models/05_feature_columns.json, 05_imputer.pkl,
@@ -80,22 +94,26 @@ def _load_feature_engineering_module():
 
 
 _feat_mod = _load_feature_engineering_module()
-FORECAST_HORIZON_DAYS = _feat_mod.FORECAST_HORIZON_DAYS
+FORECAST_HORIZON_DAYS = _feat_mod.FORECAST_HORIZON_DAYS  # max horizon_day (7)
 MAG_THRESHOLD = 4.5
-N_LOOKBACK_DAYS = 8  # today + the previous 7 days' forecast snapshots (for the UI slider)
 
 _lock = threading.Lock()
-_cache = {"forecast_df": None, "asof_date": None, "available_days": None, "n_cells": None}
+_cache = {"forecast_df": None, "asof_date": None}
+
+_TARGET_COLS = [f"target_h{d}" for d in range(1, FORECAST_HORIZON_DAYS + 1)]
 
 
-def _compute_live_features(min_events_per_cell=None, n_lookback_days=N_LOOKBACK_DAYS):
+def _compute_live_features(min_events_per_cell=None, n_lookback_days=1):
     """Recompute the last `n_lookback_days` feature rows (one per day) for
     every active cell, using the committed cleaned catalog
     (outputs/03_processed/03_cleaned_catalog.csv). `compute_cell_features`
     already returns a full per-cell daily time series, so keeping the last
     N rows instead of just the last one costs essentially nothing extra.
-    Returns a DataFrame: n_lookback_days rows per active cell (no target
-    column - it's not knowable for any of these recent days)."""
+    Returns a DataFrame: n_lookback_days rows per active cell (no target_h*
+    columns - they're not knowable for any of these recent days). Default
+    n_lookback_days=1 -> just today's row, which is all the live dashboard
+    needs now that horizon_day (not which day this snapshot was taken) is
+    what varies the forecast."""
     mep = min_events_per_cell or _feat_mod.MIN_EVENTS_PER_CELL
     mag_threshold = 4.5
 
@@ -142,12 +160,47 @@ def _compute_live_features(min_events_per_cell=None, n_lookback_days=N_LOOKBACK_
         recent["mc_cell"] = mc_cell
         rows.append(recent)
 
-    live = pd.concat(rows, axis=0).drop(columns=["target"], errors="ignore")
+    live = pd.concat(rows, axis=0).drop(columns=_TARGET_COLS, errors="ignore")
     doy = live["day"].dt.dayofyear
     live["doy_sin"] = np.sin(2 * np.pi * doy / 365.25)
     live["doy_cos"] = np.cos(2 * np.pi * doy / 365.25)
     live = live.reset_index(drop=True)
     return live, asof_date
+
+
+def _expand_horizons(today_df):
+    """Repeat each cell's today-row once per horizon_day in
+    1..FORECAST_HORIZON_DAYS, adding `horizon_day` as a feature. This is
+    the piece that makes the dashboard's slider genuinely dynamic: the
+    trained model reads horizon_day like any other feature, so the SAME
+    underlying rolling-window snapshot produces a different, learned
+    probability for "risk by tomorrow" vs. "risk by day 7" instead of the
+    single fixed-window answer the old single-horizon target could give."""
+    frames = []
+    for h in range(1, FORECAST_HORIZON_DAYS + 1):
+        f = today_df.copy()
+        f["horizon_day"] = h
+        frames.append(f)
+    return pd.concat(frames, axis=0, ignore_index=True)
+
+
+def _magnitude_estimate(live_df):
+    """Per-row Gutenberg-Richter magnitude readout, conditional on a
+    >=MAG_THRESHOLD event occurring (see scripts/04_feature_engineering.py's
+    "MAGNITUDE ESTIMATE" docstring section) - NOT a point prediction.
+    Prefers b_value_90d (more responsive to recent activity), falls back to
+    b_value_365d, then to a fixed global default when both are NaN (too few
+    qualifying events in either window). Returns a DataFrame with
+    mag_likely (50% exceedance - "most likely around here") and
+    mag_severe (10% exceedance - "could reach this in a worse-case
+    scenario")."""
+    b = live_df["b_value_90d"].where(
+        live_df["b_value_90d"].notna(), live_df["b_value_365d"]
+    )
+    b = b.fillna(_feat_mod.DEFAULT_B_VALUE).clip(lower=0.3)  # guard against a degenerate near-zero b
+    mag_likely = _feat_mod.magnitude_quantile(b.to_numpy(), MAG_THRESHOLD, 0.5)
+    mag_severe = _feat_mod.magnitude_quantile(b.to_numpy(), MAG_THRESHOLD, 0.1)
+    return pd.DataFrame({"mag_likely": mag_likely, "mag_severe": mag_severe}, index=live_df.index)
 
 
 def _load_model_artifacts():
@@ -186,43 +239,43 @@ def _predict_all_models(live_df):
 
 
 def _refresh_cache():
-    live_df, asof_date = _compute_live_features()
-    proba = _predict_all_models(live_df)
+    today_df, asof_date = _compute_live_features()
+    expanded = _expand_horizons(today_df)
+    proba = _predict_all_models(expanded)
+    mag = _magnitude_estimate(expanded)
 
-    out = live_df[["day", "cell_lat", "cell_lon"] + FEATURE_DISPLAY_COLS].copy()
+    out = expanded[["horizon_day", "cell_lat", "cell_lon"] + FEATURE_DISPLAY_COLS].copy()
     for key in MODEL_KEYS:
         out[f"proba_{key}"] = proba.get(key, np.nan)
+    out["mag_likely"] = mag["mag_likely"]
+    out["mag_severe"] = mag["mag_severe"]
     out = out.replace({np.nan: None})
-
-    available_days = sorted(out["day"].unique(), reverse=True)  # newest (today) first
 
     _cache["forecast_df"] = out
     _cache["asof_date"] = asof_date
-    _cache["available_days"] = available_days
-    _cache["n_cells"] = out.groupby("day").size().max()
 
 
-def get_forecast(offset_days=0, force_refresh=False):
-    """Cached: (day_df, asof_date, day_date, horizon_end_date, available_days).
-    day_df has one row per active cell for the selected snapshot day, with
-    cell_lat/cell_lon, display features, and a probability column per model
-    key. `offset_days=0` is today (the most recent day available); larger
-    values step back through earlier forecast snapshots (see module
-    docstring for what a "snapshot" means and why there's no true
-    day-by-day breakdown within the 7-day horizon itself)."""
+def get_forecast(horizon_day=1, force_refresh=False):
+    """Cached: (day_df, asof_date, horizon_end_date). day_df has one row per
+    active cell for the selected horizon_day, with cell_lat/cell_lon,
+    display features, a probability column per model key, and a
+    Gutenberg-Richter magnitude readout (mag_likely/mag_severe). All rows
+    come from a SINGLE today-feature-snapshot (asof_date) - horizon_day
+    (1..FORECAST_HORIZON_DAYS) selects which "risk by day N" question the
+    model answers about that same snapshot, which is what makes moving the
+    slider produce genuinely different numbers (see module docstring)."""
     with _lock:
         if _cache["forecast_df"] is None or force_refresh:
             _refresh_cache()
 
-        available_days = _cache["available_days"]
-        offset_days = max(0, min(offset_days, len(available_days) - 1))
-        day_date = available_days[offset_days]
+        horizon_day = max(1, min(int(horizon_day), FORECAST_HORIZON_DAYS))
 
         day_df = _cache["forecast_df"]
-        day_df = day_df[day_df["day"] == day_date].drop(columns=["day"]).reset_index(drop=True)
-        horizon_end_date = day_date + pd.Timedelta(days=_feat_mod.FORECAST_HORIZON_DAYS)
+        day_df = day_df[day_df["horizon_day"] == horizon_day].drop(columns=["horizon_day"]).reset_index(drop=True)
+        asof_date = _cache["asof_date"]
+        horizon_end_date = asof_date + pd.Timedelta(days=horizon_day)
 
-        return day_df, _cache["asof_date"], day_date, horizon_end_date, available_days
+        return day_df, asof_date, horizon_end_date
 
 
 def get_recent_significant_quakes(days=30, min_mag=4.5):
