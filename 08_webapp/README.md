@@ -3,9 +3,11 @@
 Implements the proposal's last two pipeline steps — **forecast output ->
 early warning alert** — as a local interactive dashboard, combining:
 
-- **UI/interaction**: ported from `temp/EarthquakeForecasting/Webapp/`
-  as-is (title bar, single world map, one "select future date" slider) -
-  see `templates/index.html`. The original's Google Maps JS API (a real-
+- **UI/interaction**: ported as-is from the third-party reference app this
+  dashboard was modeled on (title bar, single world map, one "select future
+  date" slider) - see `templates/index.html`. That reference project is not
+  vendored in this repo: it's third-party material, never committed, and
+  not part of this deliverable. The original's Google Maps JS API (a real-
   looking key hardcoded in the page source, and since discontinued for
   the heatmap feature it used) is swapped for Leaflet + Esri tiles - no
   API key needed. One circle marker per active cell, colored/sized

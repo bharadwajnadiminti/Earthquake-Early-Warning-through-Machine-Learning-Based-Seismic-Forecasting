@@ -2,10 +2,12 @@
 """
 app.py
 
-Stage 08: forecast dashboard. UI/interaction is the reference app's own
-(temp/EarthquakeForecasting/Webapp) - title bar, single world map, one
-"select future date" slider, 1-7 days out - kept as close to the original
-as possible (see templates/index.html). The DATA PULLING AND MODEL
+Stage 08: forecast dashboard. UI/interaction follows the third-party
+reference app this project's dashboard was modeled on - title bar, single
+world map, one "select future date" slider, 1-7 days out - kept as close
+to that original as possible (see templates/index.html). That reference
+project is not vendored here (it was never committed - third-party
+material, not part of this deliverable). The DATA PULLING AND MODEL
 BUILDING behind it is this project's own verified pipeline, not the
 reference app's from-scratch-every-restart approach: see inference.py,
 which reuses scripts/04_feature_engineering.py's own feature code and

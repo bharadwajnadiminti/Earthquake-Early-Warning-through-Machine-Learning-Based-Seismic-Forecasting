@@ -246,11 +246,12 @@ tie-breaker given the class imbalance. Full numbers: run stage 06/07 and see
 pipeline steps — **forecast output -> early warning alert**, combining
 two things kept deliberately separate:
 
-- **UI**: ported as-is from `temp/EarthquakeForecasting/Webapp/` (title
-  bar, single world map, one "select future date" slider) — only the
-  Google Maps JS API (a real-looking key hardcoded in the page source) is
-  swapped for Leaflet + leaflet.heat over free OpenStreetMap tiles, so
-  nothing gets committed to a public repo that shouldn't be.
+- **UI**: ported as-is from the third-party reference app this dashboard
+  was modeled on (title bar, single world map, one "select future date"
+  slider) — only the Google Maps JS API (a real-looking key hardcoded in
+  the page source) is swapped for Leaflet over free Esri tiles, so nothing
+  gets committed to a public repo that shouldn't be. That reference
+  project is third-party material and is not vendored in this repo.
 - **Data/model**: this project's own verified pipeline, not the reference
   app's from-scratch-every-restart approach — `08_webapp/inference.py`
   reuses `scripts/04_feature_engineering.py`'s own feature code and loads

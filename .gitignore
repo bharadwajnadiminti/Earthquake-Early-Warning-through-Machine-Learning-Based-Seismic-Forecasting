@@ -1,3 +1,4 @@
+# --- editor / interpreter noise -------------------------------------------
 __pycache__/
 *.pyc
 .idea/
@@ -6,17 +7,29 @@ __pycache__/
 .pytest_cache/
 .coverage
 
-# Superseded raw snapshot, duplicate of dataset/usgs_earthquake_catalog.csv
-# (documented as unused by the pipeline in README.md).
-dataset/archive/
-
-# Third-party reference project (old single-model Flask demo + notebooks)
-# that 08_webapp/ was modeled on/improves upon - inspiration material, not
-# part of this project's own deliverable pipeline. See 08_webapp/README.md.
+# --- third-party material, never part of this deliverable ------------------
+# The old single-model Flask demo + notebooks that 08_webapp/ was modeled on
+# and improves upon. Kept out of the repo deliberately (see 08_webapp/README.md).
 temp/
 
-# Raw ydata-profiling JSON dump (~106MB) exceeds GitHub's 100MB file limit.
-# The human-readable HTML report (outputs/02_profiling/usgs_earthquake_profile.html)
-# is committed instead. Regenerate the JSON locally if needed:
-#   python scripts/02_generate_profile_report.py   (Python <3.14 env, see README)
+# --- large regenerable data artifacts --------------------------------------
+# Too large to track usefully, and every one of them is rebuilt by re-running
+# the pipeline. Every SMALL artifact (metrics, plots, best-params, the final
+# report, the trained model .pkl files) stays committed, so the results remain
+# browsable on GitHub without a clone + full re-run. See dataset/README.md and
+# outputs/README.md for how to rebuild these.
+#
+#   dataset/usgs_earthquake_catalog.csv           (~46MB, grows every stage-01 fetch)
+#   outputs/03_processed/03_cleaned_catalog.csv   (~51MB)
+#   outputs/04_features/04_feature_matrix.csv     (~557MB; 7 horizon_day rows per
+#                                                  (cell, day) since the multi-horizon
+#                                                  target change)
+#   outputs/02_profiling/usgs_earthquake_profile.json  (~107MB; the human-readable
+#                                                  .html sibling IS committed)
+dataset/usgs_earthquake_catalog.csv
+outputs/03_processed/03_cleaned_catalog.csv
+outputs/04_features/04_feature_matrix.csv
 outputs/02_profiling/usgs_earthquake_profile.json
+
+# Ad-hoc stdout capture from a manual stage-01 run, not a pipeline artifact.
+outputs/01_fetch_log.txt

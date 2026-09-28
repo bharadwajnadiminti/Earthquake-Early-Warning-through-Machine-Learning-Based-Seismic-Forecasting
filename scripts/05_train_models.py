@@ -114,6 +114,22 @@ CV_N_SPLITS = 5
 MODELS_DIR = Path("../outputs/05_models")
 
 
+def _write_json(path, obj):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2)
+
+
+def flush_artifacts(artifacts):
+    """Write every queued (path, writer) pair. Called only after all models
+    have finished training, so outputs/05_models/ never holds a new feature
+    schema alongside a previous run's models - see the comment at the queue
+    site in main() for why that combination breaks downstream consumers."""
+    print(f"\nWriting {len(artifacts)} artifacts to disk...")
+    for path, writer in artifacts:
+        writer(path)
+        print(f"  wrote {path.name}")
+
+
 def chronological_split(df, day_col="day"):
     days = np.sort(df[day_col].unique())
     n = len(days)
@@ -243,9 +259,20 @@ def main():
     print(f"\nFeature columns ({len(all_feature_cols)}): {all_feature_cols}")
     print(f"Columns needing missing-indicator + median imputation: {nan_cols}")
 
-    joblib.dump(imputer, outdir / "05_imputer.pkl")
-    with open(outdir / "05_feature_columns.json", "w", encoding="utf-8") as f:
-        json.dump({"feature_columns": all_feature_cols, "nan_indicator_source_columns": nan_cols}, f, indent=2)
+    # Every artifact this script produces is QUEUED here and written only
+    # once all models have trained (see flush_artifacts at the end). Writing
+    # 05_feature_columns.json / 05_imputer.pkl up-front (as this script used
+    # to) published a NEW feature schema while the model .pkl files on disk
+    # were still the PREVIOUS run's - for the hour-plus that training takes,
+    # anything loading outputs/05_models/ (notably 08_webapp/inference.py)
+    # would combine a new schema with old models and die with sklearn's
+    # "feature names unseen at fit time". Queue-then-flush means the
+    # directory only ever holds one self-consistent generation: either the
+    # previous run's complete set, or this run's.
+    artifacts = []
+    artifacts.append((outdir / "05_imputer.pkl", lambda p: joblib.dump(imputer, p)))
+    artifacts.append((outdir / "05_feature_columns.json", lambda p: _write_json(
+        p, {"feature_columns": all_feature_cols, "nan_indicator_source_columns": nan_cols})))
 
     gap_rows = approx_gap_rows(train)
     cv = TimeSeriesSplit(n_splits=args.cv_splits, gap=gap_rows)
@@ -263,8 +290,7 @@ def main():
         "cv_n_splits": args.cv_splits,
         "cv_gap_rows_approx": gap_rows,
     }
-    with open(outdir / "05_split_summary.json", "w", encoding="utf-8") as f:
-        json.dump(split_summary, f, indent=2)
+    artifacts.append((outdir / "05_split_summary.json", lambda p: _write_json(p, split_summary)))
 
     timings = {}
 
@@ -278,11 +304,13 @@ def main():
         }
         gs_dt, t_dt = run_gridsearch("adaboost_dt", ada_dt, grid_dt, Xtr, ytr, cv)
         timings["adaboost_dt"] = t_dt
-        joblib.dump(gs_dt.best_estimator_, outdir / "05_model_adaboost_dt.pkl")
-        with open(outdir / "05_adaboost_dt_best_params.json", "w", encoding="utf-8") as f:
-            json.dump({"best_params": gs_dt.best_params_, "best_cv_roc_auc": gs_dt.best_score_,
-                       "fixed_params": {"learning_rate": 0.6, "algorithm": "SAMME (only option in sklearn>=1.6)"}}, f, indent=2)
-        pd.DataFrame(gs_dt.cv_results_).to_csv(outdir / "05_adaboost_dt_cv_results.csv", index=False)
+        artifacts.append((outdir / "05_model_adaboost_dt.pkl",
+                          lambda p: joblib.dump(gs_dt.best_estimator_, p)))
+        artifacts.append((outdir / "05_adaboost_dt_best_params.json", lambda p: _write_json(
+            p, {"best_params": gs_dt.best_params_, "best_cv_roc_auc": gs_dt.best_score_,
+                "fixed_params": {"learning_rate": 0.6, "algorithm": "SAMME (only option in sklearn>=1.6)"}})))
+        artifacts.append((outdir / "05_adaboost_dt_cv_results.csv",
+                          lambda p: pd.DataFrame(gs_dt.cv_results_).to_csv(p, index=False)))
 
     # ---------------------------------------------------------------- model 2
     if "adaboost_rf" not in skip:
@@ -295,12 +323,14 @@ def main():
         }
         gs_rf, t_rf = run_gridsearch("adaboost_rf", ada_rf, grid_rf, Xtr, ytr, cv, n_jobs=-1)
         timings["adaboost_rf"] = t_rf
-        joblib.dump(gs_rf.best_estimator_, outdir / "05_model_adaboost_rf.pkl")
-        with open(outdir / "05_adaboost_rf_best_params.json", "w", encoding="utf-8") as f:
-            json.dump({"best_params": gs_rf.best_params_, "best_cv_roc_auc": gs_rf.best_score_,
-                       "fixed_params": {"inner_rf_n_estimators": 15, "inner_rf_max_depth": 4,
-                                        "reason": "see module docstring: compute-budget choice"}}, f, indent=2)
-        pd.DataFrame(gs_rf.cv_results_).to_csv(outdir / "05_adaboost_rf_cv_results.csv", index=False)
+        artifacts.append((outdir / "05_model_adaboost_rf.pkl",
+                          lambda p: joblib.dump(gs_rf.best_estimator_, p)))
+        artifacts.append((outdir / "05_adaboost_rf_best_params.json", lambda p: _write_json(
+            p, {"best_params": gs_rf.best_params_, "best_cv_roc_auc": gs_rf.best_score_,
+                "fixed_params": {"inner_rf_n_estimators": 15, "inner_rf_max_depth": 4,
+                                 "reason": "see module docstring: compute-budget choice"}})))
+        artifacts.append((outdir / "05_adaboost_rf_cv_results.csv",
+                          lambda p: pd.DataFrame(gs_rf.cv_results_).to_csv(p, index=False)))
 
     # ---------------------------------------------------------------- model 3
     if "xgboost" not in skip:
@@ -317,16 +347,17 @@ def main():
             Xtr, ytr, Xval, yval, cv, grid_xgb, fixed
         )
         timings["xgboost"] = t_xgb
-        joblib.dump(model_xgb, outdir / "05_model_xgboost.pkl")
-        with open(outdir / "05_xgboost_best_params.json", "w", encoding="utf-8") as f:
-            json.dump({"best_params": best_params_xgb,
-                       "best_iteration": int(model_xgb.best_iteration) if model_xgb.best_iteration is not None else None,
-                       "fixed_params": {k: v for k, v in fixed.items()},
-                       "scale_pos_weight": scale_pos_weight}, f, indent=2)
-        pd.DataFrame(results_xgb).to_csv(outdir / "05_xgboost_cv_results.csv", index=False)
+        artifacts.append((outdir / "05_model_xgboost.pkl", lambda p: joblib.dump(model_xgb, p)))
+        artifacts.append((outdir / "05_xgboost_best_params.json", lambda p: _write_json(
+            p, {"best_params": best_params_xgb,
+                "best_iteration": int(model_xgb.best_iteration) if model_xgb.best_iteration is not None else None,
+                "fixed_params": {k: v for k, v in fixed.items()},
+                "scale_pos_weight": scale_pos_weight})))
+        artifacts.append((outdir / "05_xgboost_cv_results.csv",
+                          lambda p: pd.DataFrame(results_xgb).to_csv(p, index=False)))
 
-    with open(outdir / "05_training_timings.json", "w", encoding="utf-8") as f:
-        json.dump(timings, f, indent=2)
+    artifacts.append((outdir / "05_training_timings.json", lambda p: _write_json(p, timings)))
+    flush_artifacts(artifacts)
     print(f"\nAll done. Timings (seconds): {timings}")
 
 

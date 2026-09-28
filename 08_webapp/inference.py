@@ -203,6 +203,33 @@ def _magnitude_estimate(live_df):
     return pd.DataFrame({"mag_likely": mag_likely, "mag_severe": mag_severe}, index=live_df.index)
 
 
+def _check_model_matches_schema(key, model, feature_cols):
+    """Fail early and legibly if a model on disk was fit on a different
+    feature set than 05_feature_columns.json declares. Without this, the
+    mismatch only surfaces deep inside predict_proba as sklearn's
+    "feature names unseen at fit time" - which says nothing about the
+    actual cause (stage 05's artifacts being from two different runs) or
+    the fix. Stage 05 now writes all its artifacts together at the end so
+    this shouldn't happen, but a half-finished or interrupted training run
+    is exactly when a clear message matters most."""
+    fitted_on = getattr(model, "feature_names_in_", None)
+    if fitted_on is None:
+        return  # model didn't record feature names (e.g. fit on a bare array) - nothing to check
+    missing = [c for c in feature_cols if c not in set(fitted_on)]
+    extra = [c for c in fitted_on if c not in set(feature_cols)]
+    if missing or extra:
+        raise RuntimeError(
+            f"Model '{key}' ({MODEL_KEYS[key][1]}) was trained on a different feature set than "
+            f"05_feature_columns.json declares.\n"
+            f"  Declared but not in the model: {missing}\n"
+            f"  In the model but not declared: {extra}\n"
+            f"This means outputs/05_models/ holds artifacts from two different training runs - "
+            f"usually because stage 05 is still running, or was interrupted partway.\n"
+            f"Fix: re-run `py -3.14 05_train_models.py` from scripts/ and let it finish "
+            f"(it writes every artifact at the end, so the directory stays self-consistent)."
+        )
+
+
 def _load_model_artifacts():
     with open(MODELS_DIR / "05_feature_columns.json", encoding="utf-8") as f:
         feat_info = json.load(f)
@@ -215,7 +242,9 @@ def _load_model_artifacts():
     for key, (_, fname) in MODEL_KEYS.items():
         path = MODELS_DIR / fname
         if path.exists():
-            models[key] = joblib.load(path)
+            model = joblib.load(path)
+            _check_model_matches_schema(key, model, feature_cols)
+            models[key] = model
     return feature_cols, base_cols, nan_source_cols, imputer, models
 
 
