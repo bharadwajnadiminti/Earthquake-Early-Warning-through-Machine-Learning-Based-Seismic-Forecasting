@@ -6,7 +6,7 @@ __pycache__/
 *.bak
 .pytest_cache/
 .coverage
-
+EarthquakeForecasting/
 # --- third-party material, never part of this deliverable ------------------
 # The old single-model Flask demo + notebooks that 08_webapp/ was modeled on
 # and improves upon. Kept out of the repo deliberately (see 08_webapp/README.md).
@@ -33,3 +33,18 @@ outputs/02_profiling/usgs_earthquake_profile.json
 
 # Ad-hoc stdout capture from a manual stage-01 run, not a pipeline artifact.
 outputs/01_fetch_log.txt
+
+# Experiment feature matrices (magnitude-threshold sensitivity study, stage 09).
+# Same ~557MB-per-matrix problem as the main one above; the small backtest
+# RESULTS under outputs/experiments/*/09_backtest/ stay committed.
+#   -> regenerate: python scripts/04_feature_engineering.py --mag-threshold 5.0 \
+#        --output ../outputs/experiments/mag5.0/04_feature_matrix.csv ...
+outputs/experiments/*/04_feature_matrix.csv
+
+# --- secrets ---------------------------------------------------------------
+# Google Maps API key for the stage-08 dashboard. The reference app this UI was
+# taken from had a live key written directly into its page source; this repo is
+# public, so the key is read at render time from this untracked file instead
+# (see 08_webapp/app.py). Create it yourself with your own key as the only
+# contents - one line, no quotes.
+08_webapp/.google_maps_key

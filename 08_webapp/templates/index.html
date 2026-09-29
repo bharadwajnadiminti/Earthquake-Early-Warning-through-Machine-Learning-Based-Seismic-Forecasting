@@ -2,20 +2,21 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta charset="UTF-8">
+    <meta charset="UTF=8">
     <title>Predicting Earthquakes</title>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css">
+    <script src="//netdna.bootstrapcdn.com/bootstrap/3.0.3/js/bootstrap.min.js"></script>
 
-    <!-- Leaflet: free, no API key (the original used the Google Maps JS API
-         with a key hardcoded in this file - removed, see app.py docstring
-         for why). Individual per-cell points instead of a blended heatmap
-         - each dot is one active grid cell's own predicted probability,
-         not a smoothed/interpolated surface. -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <!-- Pure color/radius-scale logic lives in its own file so it can be
-         unit tested with plain Node (tests/js/risk-scale.test.js) instead
-         of only ever being checked by eye - see that file's header comment. -->
-    <script src="{{ url_for('static', filename='js/risk-scale.js') }}"></script>
+    <!-- Identical to the reference app except the API key, which is injected
+         from 08_webapp/.google_maps_key (gitignored) instead of being written
+         in plain text here. The reference had a live key committed in the page
+         source; this repo is public, so the key is kept out of git while the
+         rendered page is byte-identical in behaviour. -->
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&libraries=visualization&callback=initMap">
+    </script>
 
     <style>
       /* Always set the map height explicitly to define the size of the div
@@ -23,7 +24,6 @@
       #map {
         height: 73%;
         width: 100%;
-        background: #aad3df;
       }
       /* Optional: Makes the sample page fill the window. */
       html, body {
@@ -31,38 +31,28 @@
         margin: 0;
         padding: 0;
       }
-
-      /* Reference app's Google Maps gave it a permanently-visible "Map |
-         Satellite" two-button toggle (white rounded box, top-left) rather
-         than an icon you have to open - `collapsed:false` below keeps
-         Leaflet's control always expanded, and this restyles its default
-         checkbox-list look into that same segmented-button look. */
-      .leaflet-control-layers {
-        border-radius: 2px;
-        box-shadow: 0 1px 4px rgba(0,0,0,.3);
-        font-family: Roboto, Arial, sans-serif;
-        overflow: hidden;
+      #floating-panel {
+        position: absolute;
+        top: 10px;
+        left: 25%;
+        z-index: 5;
+        background-color: #fff;
+        padding: 5px;
+        border: 1px solid #999;
+        text-align: center;
+        font-family: 'Roboto','sans-serif';
+        line-height: 30px;
+        padding-left: 10px;
       }
-      /* The actual per-layer <label>s live in .leaflet-control-layers-base,
-         nested one level inside .leaflet-control-layers-list (which also
-         holds the separator/overlays sections we don't use) - flex has to
-         go on -base itself, not -list, to lay "Map"/"Satellite" out as
-         side-by-side tabs instead of a stacked list. */
-      .leaflet-control-layers-base { display: flex; }
-      .leaflet-control-layers-base label {
-        margin: 0;
-        padding: 8px 16px;
-        cursor: pointer;
-        font-size: 13px;
-        color: #000;
-        user-select: none;
+      #floating-panel {
+        background-color: #fff;
+        border: 1px solid #999;
+        left: 25%;
+        padding: 5px;
+        position: absolute;
+        top: 10px;
+        z-index: 5;
       }
-      .leaflet-control-layers-base label input { display: none; }
-      .leaflet-control-layers-base label.active {
-        background: #f0f0f0;
-        font-weight: bold;
-      }
-      .leaflet-control-layers-separator { display: none; }
     </style>
   </head>
 
@@ -77,140 +67,49 @@
     <div id="map"></div>
     <script>
 
-      var earthquakeHorizon = {{ earthquake_horizon | tojson }};
-      var horizonDays = {{ current_value }};
-      var map, pointsLayer;
-
-      // colorForProb / radiusForProb now come from static/js/risk-scale.js
-      // (loaded above) - continuous color + size scale by predicted
-      // probability, not discrete buckets. Day-to-day, most active cells'
-      // probabilities move by a few hundredths (e.g. 0.82 -> 0.73), which
-      // is a real, model-driven change - discrete color buckets used to
-      // swallow moves that didn't cross a bucket edge, making the map look
-      // static across the slider even though the numbers underneath were
-      // genuinely updating.
-
-      // The slider does a full form POST -> full page reload (this is a
-      // plain server-rendered Flask app, not a single-page app), so
-      // initMap() runs from scratch on every slider move. Without this,
-      // that meant losing which base layer (Map/Satellite) and which
-      // part of the world you were looking at every single time. Persist
-      // both across reloads in localStorage (per-browser only - not a
-      // server-side setting - and wrapped in try/catch since private
-      // browsing can block storage access).
-      var VIEW_KEY = 'eq_forecaster_view';
-      function saveView(patch) {
-        try {
-          var cur = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}');
-          localStorage.setItem(VIEW_KEY, JSON.stringify(Object.assign(cur, patch)));
-        } catch (e) { /* private browsing / storage disabled - just skip persistence */ }
-      }
-      function loadView() {
-        try {
-          return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}');
-        } catch (e) { return {}; }
-      }
+      var map, heatmap;
 
       function initMap() {
-        var saved = loadView();
-
-        // maxBounds + noWrap on every tile layer stop Leaflet's default
-        // infinite horizontal wrap - without them, zooming out past
-        // "the whole world fits once" repeats the map side-by-side
-        // indefinitely as you pan/zoom out.
-        // zoomSnap/zoomDelta of 0.25 allow the fractional zoom (1.5) the
-        // reference app opened at, instead of Leaflet's default integer-
-        // only zoom levels.
-        var worldBounds = L.latLngBounds([-90, -180], [90, 180]);
-        map = L.map('map', {
-          minZoom: 1.5,
-          zoomSnap: 0.25,
-          zoomDelta: 0.5,
-          maxBounds: worldBounds,
-          maxBoundsViscosity: 1.0,
-        }).setView(saved.center || [0, 0], saved.zoom || 1.5);
-
-        // "Map": Esri World Street Map - labeled countries/places + cream
-        // landmass / light-blue ocean, the closest free (no API key) look-
-        // alike to the reference app's Google roadmap style. (CartoDB's
-        // free basemaps now require a key too - tried, watermarked "API KEY
-        // REQUIRED" - Esri's public basemap tiles don't.)
-        var roadmap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri',
-          maxZoom: 19,
-          noWrap: true,
-          bounds: worldBounds,
+        map = new google.maps.Map(document.getElementById('map'), {
+          zoom: 1.5,
+          center: {lat: 0, lng: 0},
+          mapTypeId: 'roadmap'
         });
 
-        // "Satellite": Esri World Imagery - free, no key, matches the
-        // reference app's Map/Satellite toggle.
-        var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri',
-          maxZoom: 19,
-          noWrap: true,
-          bounds: worldBounds,
+        heatmap = new google.maps.visualization.HeatmapLayer({
+          data: getPoints(),
+          map: map
         });
-
-        // Restore whichever base layer was active before the last slider
-        // move (defaults to "Map" the very first time).
-        (saved.baseLayer === 'Satellite' ? satellite : roadmap).addTo(map);
-
-        // collapsed:false keeps it permanently open as a "Map | Satellite"
-        // toggle (see CSS above), matching the reference app's always-
-        // visible Google Maps control, instead of Leaflet's default
-        // icon-that-expands-on-hover.
-        var baseLayers = { 'Map': roadmap, 'Satellite': satellite };
-        var layersControl = L.control.layers(baseLayers, null, { position: 'topleft', collapsed: false }).addTo(map);
-
-        function markActiveBaseLayer(name) {
-          var labels = layersControl.getContainer().querySelectorAll('.leaflet-control-layers-base label');
-          labels.forEach(function (label) {
-            var isThis = label.textContent.trim() === name;
-            label.classList.toggle('active', isThis);
-          });
-        }
-        markActiveBaseLayer(saved.baseLayer === 'Satellite' ? 'Satellite' : 'Map');
-
-        map.on('baselayerchange', function (e) {
-          saveView({ baseLayer: e.name });
-          markActiveBaseLayer(e.name);
-        });
-        map.on('moveend', function () {
-          saveView({ center: map.getCenter(), zoom: map.getZoom() });
-        });
-
-        // One circle marker per active grid cell's own forecast - not a
-        // blended/interpolated heatmap surface, so what you see is exactly
-        // what the model predicted for that cell, nothing smoothed in
-        // between.
-        pointsLayer = L.layerGroup();
-        getPoints().forEach(function (pt) {
-          var lat = pt[0], lon = pt[1], p = pt[2], magLikely = pt[3], magSevere = pt[4];
-          var popupText = 'P(M4.5+ within next ' + horizonDays + ' day' + (horizonDays === 1 ? '' : 's') + ') = ' + p.toFixed(2);
-          if (magLikely != null) {
-            popupText += '<br>If triggered: ~M' + magLikely.toFixed(1) +
-              (magSevere != null ? ' (could reach M' + magSevere.toFixed(1) + ' in a severe scenario)' : '');
-          }
-          L.circleMarker([lat, lon], {
-            radius: radiusForProb(p),
-            weight: 1,
-            color: '#222',
-            fillColor: colorForProb(p),
-            fillOpacity: 0.85,
-          })
-            .bindPopup(popupText)
-            .bindTooltip(p.toFixed(2), { permanent: false, direction: 'top' })
-            .addTo(pointsLayer);
-        });
-        pointsLayer.addTo(map);
       }
 
-      // Point data: [lat, lon, weight] triples, weight = predicted probability
+      function toggleHeatmap() {
+        heatmap.setMap(heatmap.getMap() ? null : map);
+      }
+
+      function changeGradient() {
+        var gradient = [
+          'rgba(0, 255, 255, 0)',
+          'rgba(0, 255, 255, 1)',
+          'rgba(0, 191, 255, 1)',
+          'rgba(0, 127, 255, 1)',
+          'rgba(0, 63, 255, 1)',
+          'rgba(0, 0, 255, 1)',
+          'rgba(0, 0, 223, 1)',
+          'rgba(0, 0, 191, 1)',
+          'rgba(0, 0, 159, 1)',
+          'rgba(0, 0, 127, 1)',
+          'rgba(63, 0, 91, 1)',
+          'rgba(127, 0, 63, 1)',
+          'rgba(191, 0, 31, 1)',
+          'rgba(255, 0, 0, 1)'
+        ]
+        heatmap.set('gradient', heatmap.get('gradient') ? null : gradient);
+      }
+
+      // Heatmap data
       function getPoints() {
-        return earthquakeHorizon;
+        return [{{earthquake_horizon}}];
       }
-
-      initMap();
     </script>
 
         <table border=1 cellpadding="1" style="width:100%; background-color:black;">
@@ -219,7 +118,7 @@
                   <form id='submit_params' method="POST" action="{{ url_for('build_page') }}">
                     <div class="slidecontainer" style='width: 100%;'>
                     <label><font color="white">Select future date: <span id="label_slider_value">{{date_horizon}}</span></font></label><BR>
-                    <input type="range" min="1" max="{{days_out_to_predict}}" value="{{current_value}}" name="slider_date_horizon"
+                    <input type="range" min="0" max="{{days_out_to_predict}}" value="{{current_value}}" name="slider_date_horizon"
                       id="slider_date_horizon" step="1" style='width: 100%;'>
                   </div>
                 </form>

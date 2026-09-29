@@ -43,6 +43,9 @@ Run locally:
     -> http://127.0.0.1:5000
 """
 
+from datetime import datetime, timedelta
+from pathlib import Path
+
 from flask import Flask, render_template, request
 
 import inference
@@ -51,37 +54,54 @@ app = Flask(__name__)
 
 PROB_THRESHOLD = 0.3  # same cutoff the reference app used to decide what to show
 
+# The reference app had its Google Maps API key written into the page source.
+# This repo is public, so the key lives in an untracked local file instead
+# (08_webapp/.google_maps_key, see .gitignore). Absent that file the page still
+# renders - Google just shows its "for development purposes only" watermark.
+_KEY_FILE = Path(__file__).resolve().parent / ".google_maps_key"
+GOOGLE_MAPS_KEY = _KEY_FILE.read_text(encoding="utf-8").strip() if _KEY_FILE.exists() else ""
+
 
 def get_earth_quake_estimates(horizon_day):
-    """Slider value (1-7, "days ahead") -> Leaflet points
-    [lat, lon, proba, mag_likely, mag_severe] for the best model's
-    (XGBoost) predicted P(M>=4.5 by this horizon_day), from today's live
-    feature snapshot (see module + inference.py docstrings)."""
+    """Slider value (1-7, "days ahead") -> the exact string the reference
+    app's template expects: a comma-separated run of
+    `new google.maps.LatLng(lat,lon),` literals, injected raw into
+    getPoints()'s array and consumed by google.maps.visualization.HeatmapLayer.
+
+    Same PROB_THRESHOLD cutoff the reference used. What differs is only what
+    sits behind the number: this project's tuned, stage-06-evaluated
+    multi-horizon model rather than a model retrained from scratch on every
+    restart (see inference.py)."""
     day_df, asof_date, horizon_end_date = inference.get_forecast(horizon_day=horizon_day)
 
-    points = []
+    lat_lng_string = ''
     for row in day_df.to_dict(orient="records"):
         p = row.get(f"proba_{inference.BEST_MODEL_KEY}")
         if p is not None and p > PROB_THRESHOLD:
-            points.append([
-                row["cell_lat"], row["cell_lon"], float(p),
-                row.get("mag_likely"), row.get("mag_severe"),
-            ])
-    return points, asof_date, horizon_end_date
+            lat_lng_string += f"new google.maps.LatLng({row['cell_lat']},{row['cell_lon']}),"
+    return lat_lng_string, asof_date, horizon_end_date
 
 
 @app.route("/", methods=['POST', 'GET'])
 def build_page():
-    horizon_day = int(request.form.get('slider_date_horizon', 1)) if request.method == 'POST' else 1
-    horizon_day = max(1, min(horizon_day, inference.FORECAST_HORIZON_DAYS))
-    points, asof_date, horizon_end_date = get_earth_quake_estimates(horizon_day)
+    horizon_int = int(request.form.get('slider_date_horizon', 1)) if request.method == 'POST' else 1
+    # The slider's own range starts at 0 ("today"), which has no forecast
+    # window at all - the reference app rendered a blank map there. Clamp into
+    # the model's real 1..7 horizons instead so no slider position is dead.
+    horizon_day = max(1, min(horizon_int, inference.FORECAST_HORIZON_DAYS))
+    earthquake_horizon, _, _ = get_earth_quake_estimates(horizon_day)
+
+    # Label the slider off the wall clock, exactly as the reference did, so the
+    # date shown matches what the slider's own oninput handler computes.
+    horizon_date = datetime.today() + timedelta(days=horizon_int)
 
     return render_template(
         'index.html',
-        date_horizon=horizon_end_date.strftime('%m/%d/%Y'),
-        earthquake_horizon=points,
-        current_value=horizon_day,
+        date_horizon=horizon_date.strftime('%m/%d/%Y'),
+        earthquake_horizon=earthquake_horizon,
+        current_value=horizon_int,
         days_out_to_predict=inference.FORECAST_HORIZON_DAYS,
+        google_maps_key=GOOGLE_MAPS_KEY,
     )
 
 

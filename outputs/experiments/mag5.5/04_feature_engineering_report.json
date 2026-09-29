@@ -1,0 +1,30 @@
+{
+  "grid_size_deg": 1.0,
+  "min_events_per_cell": 50,
+  "n_active_cells": 375,
+  "n_total_cells_with_any_event": 4647,
+  "active_cell_event_coverage_pct": 89.82,
+  "warmup_min_events": 5,
+  "forecast_horizon_days": 7,
+  "mag_threshold": 5.5,
+  "min_events_for_b_value": 10,
+  "rows_dropped_warmup": 18400,
+  "rows_dropped_no_label": 2625,
+  "final_row_count": 1522325,
+  "final_column_count": 35,
+  "target_positive_rate": 0.0035,
+  "target_positive_rate_by_horizon_day": {
+    "1": 0.001,
+    "2": 0.0019,
+    "3": 0.0028,
+    "4": 0.0036,
+    "5": 0.0044,
+    "6": 0.0051,
+    "7": 0.0059
+  },
+  "target_positive_count": 5378,
+  "date_range": [
+    "2025-01-01 00:00:00+00:00",
+    "2026-09-21 00:00:00+00:00"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "n_cutoffs": 10,
+  "seed": 42,
+  "cutoffs": [
+    "2025-08-07",
+    "2025-08-08",
+    "2025-08-11",
+    "2025-09-28",
+    "2026-01-08",
+    "2026-01-10",
+    "2026-04-15",
+    "2026-05-07",
+    "2026-06-06",
+    "2026-07-17"
+  ],
+  "horizon_days": 7,
+  "hyperparameters_source": "stage 05 05_xgboost_best_params.json (held fixed, refit per cutoff)",
+  "mean_roc_auc": 0.9313298945502148,
+  "std_roc_auc": 0.029529475309026994,
+  "min_roc_auc": 0.867621516668434,
+  "max_roc_auc": 0.9635950528878399,
+  "mean_pr_auc": 0.478018007542435,
+  "mean_actual_rate_is_pr_auc_baseline": 0.04841391013962939,
+  "mean_brier": 0.1240164265036583,
+  "roc_auc_baseline": 0.5,
+  "mean_precision_at_top10": 0.535714285714286
+}

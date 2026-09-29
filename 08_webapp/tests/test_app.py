@@ -10,10 +10,14 @@ simply never be exercised). Route tests (build_page) then separately prove
 the real, warmed cache flows all the way through to a rendered page.
 """
 
+from pathlib import Path
+
 import pandas as pd
 
 import app as app_module
 import inference
+
+WEBAPP_DIR = Path(__file__).resolve().parent.parent
 
 
 def test_prob_threshold_matches_reference_apps_cutoff():
@@ -24,7 +28,7 @@ def test_get_earth_quake_estimates_filters_none_and_low_probability(monkeypatch)
     fake_day_df = pd.DataFrame([
         {"cell_lat": 1.5, "cell_lon": 2.5, "proba_xgboost": None},  # missing -> skipped
         {"cell_lat": 3.5, "cell_lon": 4.5, "proba_xgboost": 0.1},   # <= threshold -> skipped
-        {"cell_lat": 5.5, "cell_lon": 6.5, "proba_xgboost": 0.9, "mag_likely": 4.8, "mag_severe": 5.9},  # > threshold -> kept
+        {"cell_lat": 5.5, "cell_lon": 6.5, "proba_xgboost": 0.9},   # > threshold -> kept
     ])
     fake_asof_date = "FAKE_ASOF"
     fake_horizon_end = "FAKE_HORIZON_END"
@@ -34,9 +38,11 @@ def test_get_earth_quake_estimates_filters_none_and_low_probability(monkeypatch)
 
     monkeypatch.setattr(app_module.inference, "get_forecast", fake_get_forecast)
 
-    points, asof_date, horizon_end = app_module.get_earth_quake_estimates(1)
+    lat_lng, asof_date, horizon_end = app_module.get_earth_quake_estimates(1)
 
-    assert points == [[5.5, 6.5, 0.9, 4.8, 5.9]]
+    # Exactly the literal the reference app's template expects, for the one
+    # cell above the threshold and no others.
+    assert lat_lng == "new google.maps.LatLng(5.5,6.5),"
     assert asof_date == fake_asof_date
     assert horizon_end == fake_horizon_end
 
@@ -45,10 +51,14 @@ def test_get_earth_quake_estimates_real_cache_stays_within_contract():
     # Uses the session-warmed real cache (see conftest.py) - proves the
     # function's contract holds against the actual trained pipeline, not
     # just a mock.
-    points, asof_date, horizon_end = app_module.get_earth_quake_estimates(3)
+    lat_lng, asof_date, horizon_end = app_module.get_earth_quake_estimates(3)
 
-    assert all(p[2] > app_module.PROB_THRESHOLD for p in points)
-    assert all(len(p) == 5 for p in points)  # [lat, lon, proba, mag_likely, mag_severe]
+    assert isinstance(lat_lng, str)
+    assert lat_lng.startswith("new google.maps.LatLng(")
+    assert lat_lng.endswith(",")
+    # One LatLng literal per cell shown, nothing malformed in between.
+    parts = [p for p in lat_lng.split("),") if p]
+    assert all(p.startswith("new google.maps.LatLng(") for p in parts)
     assert (horizon_end - asof_date).days == 3
 
 
@@ -57,28 +67,36 @@ def test_get_earth_quake_estimates_different_horizons_can_differ():
     # dashboard used to show an identical forecast at every "days ahead"
     # slider position because the model only had one fixed 7-day window.
     # horizon_day is now a real input feature, so day 1 and day 7 should
-    # give genuinely different risk probabilities from the SAME snapshot.
-    points_1, asof_1, end_1 = app_module.get_earth_quake_estimates(1)
-    points_7, asof_7, end_7 = app_module.get_earth_quake_estimates(7)
+    # put a genuinely different set of cells on the map.
+    lat_lng_1, asof_1, end_1 = app_module.get_earth_quake_estimates(1)
+    lat_lng_7, asof_7, end_7 = app_module.get_earth_quake_estimates(7)
 
     assert asof_1 == asof_7               # same today-snapshot
     assert (end_7 - end_1).days == inference.FORECAST_HORIZON_DAYS - 1  # different horizon end dates
-    probs_1 = sorted(p[2] for p in points_1)
-    probs_7 = sorted(p[2] for p in points_7)
-    assert probs_1 != probs_7             # NOT the same forecast replayed
+    assert lat_lng_1 != lat_lng_7         # NOT the same forecast replayed
 
 
 def test_build_page_get_renders_default_slider_position(flask_client):
     resp = flask_client.get("/")
     assert resp.status_code == 200
     assert b"Earthquake Forecaster" in resp.data
-    assert b"var earthquakeHorizon" in resp.data
+    assert b"google.maps.visualization.HeatmapLayer" in resp.data
+    assert b"function getPoints()" in resp.data
 
 
 def test_build_page_post_with_slider_value(flask_client):
     resp = flask_client.post("/", data={"slider_date_horizon": "3"})
     assert resp.status_code == 200
-    assert b"var earthquakeHorizon" in resp.data
+    assert b"new google.maps.LatLng(" in resp.data  # real forecast points injected
+
+
+def test_build_page_never_leaks_a_hardcoded_api_key():
+    """The reference app shipped a live Google Maps key in its page source.
+    This project reads it from an untracked file instead, so the TEMPLATE must
+    never contain a literal key - only the injected placeholder's value."""
+    template = (WEBAPP_DIR / "templates" / "index.html").read_text(encoding="utf-8")
+    assert "AIza" not in template, "a literal Google API key is committed in the template"
+    assert "{{ google_maps_key }}" in template
 
 
 def test_build_page_post_without_slider_value_defaults_to_one(flask_client):

@@ -1,0 +1,82 @@
+Loading ../outputs/experiments/mag5.5/04_feature_matrix.csv ...
+Loaded 1,522,325 rows, 2025-01-01 -> 2026-09-21
+Reusing stage 05's tuned hyperparameters: max_depth=4, learning_rate=0.03, n_estimators=170 (best_iteration)
+
+Eligible cutoff window: 2025-06-30 -> 2026-09-21 (449 days)
+Chose 10 random cutoffs (seed=42):
+  2025-08-07
+  2025-08-08
+  2025-08-11
+  2025-09-28
+  2026-01-08
+  2026-01-10
+  2026-04-15
+  2026-05-07
+  2026-06-06
+  2026-07-17
+
+[1/10] cutoff 2025-08-07  train_rows=446,573 (pos 1,053, 0.24%)  forecast_rows=2,555
+     ROC-AUC=0.9418  PR-AUC=0.1142  Brier=0.0863  actual_rate=0.0035  mean_pred=0.1418
+
+[2/10] cutoff 2025-08-08  train_rows=449,127 (pos 1,066, 0.24%)  forecast_rows=2,555
+     ROC-AUC=0.9393  PR-AUC=0.1113  Brier=0.0835  actual_rate=0.0047  mean_pred=0.1427
+
+[3/10] cutoff 2025-08-11  train_rows=456,793 (pos 1,101, 0.24%)  forecast_rows=2,562
+     ROC-AUC=0.8850  PR-AUC=0.0289  Brier=0.0700  actual_rate=0.0047  mean_pred=0.1234
+
+[4/10] cutoff 2025-09-28  train_rows=579,754 (pos 1,666, 0.29%)  forecast_rows=2,562
+     ROC-AUC=0.9499  PR-AUC=0.0838  Brier=0.0526  actual_rate=0.0059  mean_pred=0.1244
+
+[5/10] cutoff 2026-01-08  train_rows=843,430 (pos 2,809, 0.33%)  forecast_rows=2,597
+     ROC-AUC=0.6733  PR-AUC=0.0047  Brier=0.0666  actual_rate=0.0027  mean_pred=0.1517
+
+[6/10] cutoff 2026-01-10  train_rows=848,624 (pos 2,834, 0.33%)  forecast_rows=2,597
+     ROC-AUC=0.7646  PR-AUC=0.0038  Brier=0.0654  actual_rate=0.0012  mean_pred=0.1561
+
+[7/10] cutoff 2026-04-15  train_rows=1,095,636 (pos 3,487, 0.32%)  forecast_rows=2,611
+     ROC-AUC=0.9221  PR-AUC=0.0668  Brier=0.0859  actual_rate=0.0073  mean_pred=0.1749
+
+[8/10] cutoff 2026-05-07  train_rows=1,153,075 (pos 3,681, 0.32%)  forecast_rows=2,611
+     ROC-AUC=0.7591  PR-AUC=0.0113  Brier=0.0902  actual_rate=0.0054  mean_pred=0.1747
+
+[9/10] cutoff 2026-06-06  train_rows=1,231,454 (pos 3,981, 0.32%)  forecast_rows=2,618
+     ROC-AUC=0.8639  PR-AUC=0.0340  Brier=0.0798  actual_rate=0.0092  mean_pred=0.1642
+
+[10/10] cutoff 2026-07-17  train_rows=1,338,792 (pos 4,535, 0.34%)  forecast_rows=2,618
+     ROC-AUC=0.9816  PR-AUC=0.1000  Brier=0.1054  actual_rate=0.0034  mean_pred=0.1943
+
+==============================================================================
+PER-DATE SUMMARY (each row = an independent model, retrained from scratch)
+==============================================================================
+    cutoff  train_rows  train_positive_rate  forecast_rows  actual_events  actual_rate  mean_predicted  roc_auc  pr_auc  brier
+2025-08-07      446573               0.0024           2555              9       0.0035          0.1418   0.9418  0.1142 0.0863
+2025-08-08      449127               0.0024           2555             12       0.0047          0.1427   0.9393  0.1113 0.0835
+2025-08-11      456793               0.0024           2562             12       0.0047          0.1234   0.8850  0.0289 0.0700
+2025-09-28      579754               0.0029           2562             15       0.0059          0.1244   0.9499  0.0838 0.0526
+2026-01-08      843430               0.0033           2597              7       0.0027          0.1517   0.6733  0.0047 0.0666
+2026-01-10      848624               0.0033           2597              3       0.0012          0.1561   0.7646  0.0038 0.0654
+2026-04-15     1095636               0.0032           2611             19       0.0073          0.1749   0.9221  0.0668 0.0859
+2026-05-07     1153075               0.0032           2611             14       0.0054          0.1747   0.7591  0.0113 0.0902
+2026-06-06     1231454               0.0032           2618             24       0.0092          0.1642   0.8639  0.0340 0.0798
+2026-07-17     1338792               0.0034           2618              9       0.0034          0.1943   0.9816  0.1000 0.1054
+
+==============================================================================
+SKILL BY FORECAST HORIZON (averaged over all cutoffs)
+==============================================================================
+ horizon_day  actual_rate  mean_predicted  roc_auc  pr_auc  precision_at_top10
+           1       0.0022          0.1171   0.9183  0.0791                0.03
+           2       0.0032          0.1326   0.8896  0.0832                0.04
+           3       0.0038          0.1490   0.8795  0.0777                0.04
+           4       0.0049          0.1618   0.8718  0.0751                0.04
+           5       0.0059          0.1719   0.8560  0.0744                0.06
+           6       0.0062          0.1757   0.8545  0.0722                0.06
+           7       0.0073          0.1757   0.8485  0.0758                0.07
+
+==============================================================================
+HEADLINE
+==============================================================================
+  ROC-AUC across 10 independent retrains: 0.8680 +/- 0.1021 (min 0.6733, max 0.9816)  [0.5 = no skill]
+  PR-AUC: 0.0559  vs base rate 0.0048 = what random guessing scores
+  Of the 10 riskiest cells named each time, 4.9% really did have an M4.5+ event
+
+All backtest artifacts written to: C:\Users\bhara\Desktop\USELESS\project\outputs\experiments\mag5.5\09_backtest
