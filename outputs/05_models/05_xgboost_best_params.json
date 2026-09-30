@@ -4,7 +4,7 @@
     "max_depth": 4,
     "learning_rate": 0.03
   },
-  "best_iteration": 170,
+  "best_iteration": 184,
   "fixed_params": {
     "objective": "binary:logistic",
     "booster": "gbtree",
@@ -12,8 +12,8 @@
     "tree_method": "hist",
     "early_stopping_rounds": 50,
     "random_state": 42,
-    "scale_pos_weight": 16.432005917889285,
+    "scale_pos_weight": 26.67918787193365,
     "n_jobs": -1
   },
-  "scale_pos_weight": 16.432005917889285
+  "scale_pos_weight": 26.67918787193365
 }

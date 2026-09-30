@@ -1,60 +1,60 @@
 {
   "best_model": "XGBoost",
-  "justification": "XGBoost selected as best model: highest test-set ROC-AUC (0.9079), the primary tuning metric specified in the project proposal (GridSearchCV scoring='roc_auc'). Runner-up was AdaBoost + Random Forest (ROC-AUC=0.8903). PR-AUC (more informative than ROC-AUC under the ~6.3% test-set class imbalance) was also checked as a tie-breaker/consistency check: XGBoost=0.4414, AdaBoost + Random Forest=0.2753, AdaBoost + Decision Tree=0.2440.",
+  "justification": "XGBoost selected as best model: highest test-set ROC-AUC (0.9164), the primary tuning metric specified in the project proposal (GridSearchCV scoring='roc_auc'). Runner-up was AdaBoost + Decision Tree (ROC-AUC=0.8969). PR-AUC (more informative than ROC-AUC under the ~3.8% test-set class imbalance) was also checked as a tie-breaker/consistency check: XGBoost=0.3888, AdaBoost + Decision Tree=0.2482, AdaBoost + Random Forest=0.1884.",
   "metrics": {
-    "roc_auc": 0.9079333954573876,
-    "pr_auc": 0.4414195092708484,
-    "precision_at_0.5": 0.23020376579829765,
-    "recall_at_0.5": 0.9047136340598074,
-    "f1_at_0.5": 0.36701963606456256,
-    "best_f1_threshold": 0.8173786997795105,
-    "precision_at_best_f1": 0.325258642442594,
-    "recall_at_best_f1": 0.6533198175367461,
-    "f1_at_best_f1_threshold": 0.43429919137466305,
-    "brier_score": 0.13633139431476593,
+    "roc_auc": 0.9164426464850264,
+    "pr_auc": 0.3887633445590232,
+    "precision_at_0.5": 0.15268837926382733,
+    "recall_at_0.5": 0.9007503410641201,
+    "f1_at_0.5": 0.26111458985597996,
+    "best_f1_threshold": 0.8643823862075806,
+    "precision_at_best_f1": 0.34645592940948317,
+    "recall_at_best_f1": 0.40620736698499316,
+    "f1_at_best_f1_threshold": 0.373959914176566,
+    "brier_score": 0.13003621995449066,
     "confusion_matrix_at_0.5": [
       [
-        23615,
-        5969
+        177894,
+        43967
       ],
       [
-        188,
-        1785
+        873,
+        7923
       ]
     ],
-    "n_test": 31557,
-    "n_positive_test": 1973
+    "n_test": 230657,
+    "n_positive_test": 8796
   },
   "comparison_table": [
     {
       "model": "AdaBoost + Decision Tree",
-      "roc_auc": 0.8627124903750661,
-      "pr_auc": 0.24404631341288027,
-      "precision@0.5": 0.22974413646055436,
-      "recall@0.5": 0.8737962493664471,
-      "f1@0.5": 0.3638282156800675,
-      "f1@best_thresh": 0.4043879331837447,
-      "brier_score": 0.14592638137140904
+      "roc_auc": 0.8969499987885149,
+      "pr_auc": 0.24816568549631848,
+      "precision@0.5": 0.17981283422459893,
+      "recall@0.5": 0.8257162346521146,
+      "f1@0.5": 0.2953159307148085,
+      "f1@best_thresh": 0.3508577138733137,
+      "brier_score": 0.11331528453217546
     },
     {
       "model": "AdaBoost + Random Forest",
-      "roc_auc": 0.890337635417235,
-      "pr_auc": 0.2752725939543556,
-      "precision@0.5": 0.2374815411464626,
-      "recall@0.5": 0.8966041561074506,
-      "f1@0.5": 0.3755041392485672,
-      "f1@best_thresh": 0.37973887053641653,
-      "brier_score": 0.14755486176258006
+      "roc_auc": 0.8921904401614373,
+      "pr_auc": 0.18836392892775222,
+      "precision@0.5": 0.14934320560765227,
+      "recall@0.5": 0.9034788540245566,
+      "f1@0.5": 0.2563176313115838,
+      "f1@best_thresh": 0.3161711819707504,
+      "brier_score": 0.15437400668442539
     },
     {
       "model": "XGBoost",
-      "roc_auc": 0.9079333954573876,
-      "pr_auc": 0.4414195092708484,
-      "precision@0.5": 0.23020376579829765,
-      "recall@0.5": 0.9047136340598074,
-      "f1@0.5": 0.36701963606456256,
-      "f1@best_thresh": 0.43429919137466305,
-      "brier_score": 0.13633139431476593
+      "roc_auc": 0.9164426464850264,
+      "pr_auc": 0.3887633445590232,
+      "precision@0.5": 0.15268837926382733,
+      "recall@0.5": 0.9007503410641201,
+      "f1@0.5": 0.26111458985597996,
+      "f1@best_thresh": 0.373959914176566,
+      "brier_score": 0.13003621995449066
     }
   ]
 }

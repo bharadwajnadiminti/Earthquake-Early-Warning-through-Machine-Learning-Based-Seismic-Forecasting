@@ -1,5 +1,6 @@
 {
   "feature_columns": [
+    "horizon_day",
     "cell_lat",
     "cell_lon",
     "mc_cell",

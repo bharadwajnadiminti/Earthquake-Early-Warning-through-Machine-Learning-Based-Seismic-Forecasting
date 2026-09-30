@@ -1,9 +1,9 @@
 {
   "best_params": {
-    "estimator__max_features": "log2",
+    "estimator__max_features": "sqrt",
     "n_estimators": 200
   },
-  "best_cv_roc_auc": 0.883058611685559,
+  "best_cv_roc_auc": 0.9002137153341645,
   "fixed_params": {
     "inner_rf_n_estimators": 15,
     "inner_rf_max_depth": 4,

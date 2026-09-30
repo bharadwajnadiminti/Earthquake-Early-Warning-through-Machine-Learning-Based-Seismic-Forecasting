@@ -48,3 +48,8 @@ outputs/experiments/*/04_feature_matrix.csv
 # (see 08_webapp/app.py). Create it yourself with your own key as the only
 # contents - one line, no quotes.
 08_webapp/.google_maps_key
+
+# Stage 06/08 stdout captures, not pipeline artifacts.
+outputs/06_eval_run.log
+outputs/08_app_run.log
+outputs/09_backtest_run.log

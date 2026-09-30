@@ -1,33 +1,48 @@
-Loading ../outputs/features/04_feature_matrix.csv ...
-Loaded 209,557 rows, 2025-01-01 00:00:00+00:00 -> 2026-09-04 00:00:00+00:00
+Loading ../outputs/04_features/04_feature_matrix.csv ...
+Loaded 1,522,325 rows, 2025-01-01 00:00:00+00:00 -> 2026-09-21 00:00:00+00:00
 
-Split sizes: train=141,391 (2025-01-01 00:00:00+00:00 -> 2026-03-04 00:00:00+00:00), val=31,429 (2026-03-12 00:00:00+00:00 -> 2026-06-04 00:00:00+00:00), test=31,557 (2026-06-12 00:00:00+00:00 -> 2026-09-04 00:00:00+00:00)
-Positive rate: train=0.0574, val=0.0581, test=0.0625
+Split sizes: train=1,027,922 (2025-01-01 00:00:00+00:00 -> 2026-03-16 00:00:00+00:00), val=227,192 (2026-03-24 00:00:00+00:00 -> 2026-06-18 00:00:00+00:00), test=230,657 (2026-06-26 00:00:00+00:00 -> 2026-09-21 00:00:00+00:00)
+Positive rate: train=0.0361, val=0.0367, test=0.0381
 
-Feature columns (37): ['cell_lat', 'cell_lon', 'mc_cell', 'historical_event_count', 'days_since_last_event', 'rolling_count_7d', 'rolling_mean_mag_7d', 'rolling_max_mag_7d', 'log_energy_7d', 'rolling_count_30d', 'rolling_mean_mag_30d', 'rolling_max_mag_30d', 'log_energy_30d', 'rolling_count_90d', 'rolling_mean_mag_90d', 'rolling_max_mag_90d', 'log_energy_90d', 'rolling_count_365d', 'rolling_mean_mag_365d', 'rolling_max_mag_365d', 'log_energy_365d', 'b_value_90d', 'b_value_90d_n_events', 'b_value_365d', 'b_value_365d_n_events', 'doy_sin', 'doy_cos', 'rolling_mean_mag_7d_missing', 'rolling_max_mag_7d_missing', 'rolling_mean_mag_30d_missing', 'rolling_max_mag_30d_missing', 'rolling_mean_mag_90d_missing', 'rolling_max_mag_90d_missing', 'rolling_mean_mag_365d_missing', 'rolling_max_mag_365d_missing', 'b_value_90d_missing', 'b_value_365d_missing']
+Feature columns (43): ['horizon_day', 'cell_lat', 'cell_lon', 'mc_cell', 'historical_event_count', 'days_since_last_event', 'rolling_count_7d', 'rolling_mean_mag_7d', 'rolling_max_mag_7d', 'log_energy_7d', 'rolling_count_30d', 'rolling_mean_mag_30d', 'rolling_max_mag_30d', 'log_energy_30d', 'rolling_count_90d', 'rolling_mean_mag_90d', 'rolling_max_mag_90d', 'log_energy_90d', 'rolling_count_365d', 'rolling_mean_mag_365d', 'rolling_max_mag_365d', 'log_energy_365d', 'decay_count_hl3d', 'decay_log_energy_hl3d', 'decay_count_hl10d', 'decay_log_energy_hl10d', 'neighbor_decay_count_hl3d', 'b_value_90d', 'b_value_90d_n_events', 'b_value_365d', 'b_value_365d_n_events', 'doy_sin', 'doy_cos', 'rolling_mean_mag_7d_missing', 'rolling_max_mag_7d_missing', 'rolling_mean_mag_30d_missing', 'rolling_max_mag_30d_missing', 'rolling_mean_mag_90d_missing', 'rolling_max_mag_90d_missing', 'rolling_mean_mag_365d_missing', 'rolling_max_mag_365d_missing', 'b_value_90d_missing', 'b_value_365d_missing']
 Columns needing missing-indicator + median imputation: ['rolling_mean_mag_7d', 'rolling_max_mag_7d', 'rolling_mean_mag_30d', 'rolling_max_mag_30d', 'rolling_mean_mag_90d', 'rolling_max_mag_90d', 'rolling_mean_mag_365d', 'rolling_max_mag_365d', 'b_value_90d', 'b_value_365d']
 
-TimeSeriesSplit: n_splits=5, gap=2312 rows (~7d purge)
+TimeSeriesSplit: n_splits=5, gap=16353 rows (~7d purge)
 
 === adaboost_dt: GridSearchCV over {'estimator__max_depth': [2, 5, 7], 'n_estimators': [200, 300, 400, 500, 600]} ===
 Fitting 5 folds for each of 15 candidates, totalling 75 fits
-adaboost_dt: best CV roc_auc=0.8814  best_params={'estimator__max_depth': 5, 'n_estimators': 200}  (328.9s)
+adaboost_dt: best CV roc_auc=0.8968  best_params={'estimator__max_depth': 5, 'n_estimators': 200}  (187705.0s)
 
 === adaboost_rf: GridSearchCV over {'n_estimators': [200, 700], 'estimator__max_features': ['sqrt', 'log2']} ===
 Fitting 5 folds for each of 4 candidates, totalling 20 fits
-adaboost_rf: best CV roc_auc=0.8876  best_params={'estimator__max_features': 'log2', 'n_estimators': 200}  (51.8s)
+adaboost_rf: best CV roc_auc=0.9002  best_params={'estimator__max_features': 'sqrt', 'n_estimators': 200}  (1019.3s)
 
 === xgboost: manual grid search over {'n_estimators': [2000], 'max_depth': [4, 6, 8], 'learning_rate': [0.01, 0.03, 0.1]} (TimeSeriesSplit + early stopping) ===
-  {'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.01} -> mean CV roc_auc=0.9032
-  {'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.03} -> mean CV roc_auc=0.9043
-  {'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.1} -> mean CV roc_auc=0.9044
-  {'n_estimators': 2000, 'max_depth': 6, 'learning_rate': 0.01} -> mean CV roc_auc=0.8898
-  {'n_estimators': 2000, 'max_depth': 6, 'learning_rate': 0.03} -> mean CV roc_auc=0.8895
-  {'n_estimators': 2000, 'max_depth': 6, 'learning_rate': 0.1} -> mean CV roc_auc=0.8918
-  {'n_estimators': 2000, 'max_depth': 8, 'learning_rate': 0.01} -> mean CV roc_auc=0.8551
-  {'n_estimators': 2000, 'max_depth': 8, 'learning_rate': 0.03} -> mean CV roc_auc=0.8893
-  {'n_estimators': 2000, 'max_depth': 8, 'learning_rate': 0.1} -> mean CV roc_auc=0.8877
-xgboost: best CV roc_auc=0.9044  best_params={'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.1}
-xgboost total tuning + refit time: 131.4s, best_iteration=55
+  {'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.01} -> mean CV roc_auc=0.9177
+  {'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.03} -> mean CV roc_auc=0.9182
+  {'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.1} -> mean CV roc_auc=0.9182
+  {'n_estimators': 2000, 'max_depth': 6, 'learning_rate': 0.01} -> mean CV roc_auc=0.8979
+  {'n_estimators': 2000, 'max_depth': 6, 'learning_rate': 0.03} -> mean CV roc_auc=0.8989
+  {'n_estimators': 2000, 'max_depth': 6, 'learning_rate': 0.1} -> mean CV roc_auc=0.9023
+  {'n_estimators': 2000, 'max_depth': 8, 'learning_rate': 0.01} -> mean CV roc_auc=0.8831
+  {'n_estimators': 2000, 'max_depth': 8, 'learning_rate': 0.03} -> mean CV roc_auc=0.8884
+  {'n_estimators': 2000, 'max_depth': 8, 'learning_rate': 0.1} -> mean CV roc_auc=0.8879
+xgboost: best CV roc_auc=0.9182  best_params={'n_estimators': 2000, 'max_depth': 4, 'learning_rate': 0.03}
+xgboost total tuning + refit time: 685.7s, best_iteration=184
 
-All done. Timings (seconds): {'adaboost_dt': 328.92502546310425, 'adaboost_rf': 51.84990119934082, 'xgboost': 131.43865323066711}
+Writing 13 artifacts to disk...
+  wrote 05_imputer.pkl
+  wrote 05_feature_columns.json
+  wrote 05_split_summary.json
+  wrote 05_model_adaboost_dt.pkl
+  wrote 05_adaboost_dt_best_params.json
+  wrote 05_adaboost_dt_cv_results.csv
+  wrote 05_model_adaboost_rf.pkl
+  wrote 05_adaboost_rf_best_params.json
+  wrote 05_adaboost_rf_cv_results.csv
+  wrote 05_model_xgboost.pkl
+  wrote 05_xgboost_best_params.json
+  wrote 05_xgboost_cv_results.csv
+  wrote 05_training_timings.json
+
+All done. Timings (seconds): {'adaboost_dt': 187704.95165657997, 'adaboost_rf': 1019.3380899429321, 'xgboost': 685.703277349472}
